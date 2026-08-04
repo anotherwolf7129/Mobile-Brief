@@ -19,6 +19,9 @@ struct MorningBriefApp: App {
                 .environmentObject(scheduler)
                 .environmentObject(settings)
                 .environmentObject(narrator)
+                // This build is Korean-only, so every date and number SwiftUI
+                // formats is Korean too — whatever language the phone is set to.
+                .environment(\.locale, .brief)
                 .task {
                     await scheduler.refreshAuthorizationStatus()
                     await store.refresh()
@@ -27,6 +30,9 @@ struct MorningBriefApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
+                // The badge stands for "there are things to look at"; being here
+                // is looking at them.
+                scheduler.clearBadge()
                 Task {
                     await scheduler.refreshAuthorizationStatus()
                     await store.refresh()
@@ -58,6 +64,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         BriefScheduler.shared.onReadRequested = {
             BriefStore.shared.readoutFired()
         }
+        BriefScheduler.shared.onItemsRequested = {
+            BriefStore.shared.showItems()
+        }
         return true
     }
 }
@@ -87,7 +96,7 @@ struct RootView: View {
                         Image(systemName: "gearshape")
                             .foregroundStyle(Theme.inkSoft)
                     }
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel("설정")
                 }
             }
             .toolbarBackground(Theme.wash, for: .navigationBar)
@@ -103,7 +112,7 @@ private struct LoadingView: View {
     var body: some View {
         VStack(spacing: 14) {
             ProgressView()
-            Text("Reading your day.")
+            Text("하루를 읽고 있어요.")
                 .font(Theme.body)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -120,14 +129,14 @@ private struct AccessRequestView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Your brief needs your calendar.")
+            Text("브리핑에는 캘린더가 필요해요.")
                 .font(Theme.headline)
                 .foregroundStyle(Theme.ink)
-            Text("Allow access to Calendar and Reminders and this page becomes the shape of your day, read out loud at whatever time you choose.")
+            Text("캘린더와 미리 알림을 허용하면 이 화면이 오늘 하루의 모양이 되고, 정해 둔 시간에 소리로 읽어 줘요.")
                 .font(Theme.body)
                 .foregroundStyle(Theme.inkSoft)
 
-            Button("Allow access") {
+            Button("권한 허용") {
                 Task {
                     await scheduler.requestAuthorization()
                     await store.requestAccess()
@@ -136,7 +145,7 @@ private struct AccessRequestView: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.clay)
 
-            Text("Already denied? Settings › Privacy & Security › Calendars.")
+            Text("이미 거절했다면 설정 › 개인정보 보호 및 보안 › 캘린더에서 바꿀 수 있어요.")
                 .font(Theme.caption)
                 .foregroundStyle(Theme.inkGrey)
         }

@@ -4,6 +4,13 @@ A native iOS app that does what the Morning Brief skill does — one calm view o
 the shape of your day — and **reads it out loud at a time you set, with no
 Shortcut and no tapping.**
 
+**한국어 전용 빌드입니다.** The interface, every generated sentence, and the voice
+are Korean; the bundle declares Korean as its only language, so a phone set to
+English still gets a Korean brief. Only the first section — the day, the headline,
+and the three time blocks — is ever read aloud. 확인이 필요한 일 and 이미 정리된 일
+arrive as a second, silent notification a minute later: tapping it opens the app
+scrolled to those two sections.
+
 <img src="MorningBrief/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" width="120" alt="">
 
 Built for TestFlight distribution. SwiftUI, no third-party dependencies, iOS 17+.
@@ -29,30 +36,41 @@ The app renders the brief to speech **ahead of time** with
 - ✅ Zero interaction.
 - ⚠️ **iOS caps notification sounds at 30 seconds.** A longer file is silently
   swapped for the default alert tone, so `BriefScript.teaser` trims the script to
-  fit and `SpokenSoundRenderer` hard-stops the render at 29 seconds.
+  fit — dropping whole time blocks from the bottom, never half a sentence — and
+  `SpokenSoundRenderer` hard-stops the render at 29 seconds.
 - ⚠️ **Silenced by the ringer switch and by Silent Mode**, like any notification
   sound. Nothing an app can do about that.
 - The notification is `.timeSensitive`, so it breaks through Focus and scheduled
   summary delivery.
+
+### Tier 1b — the tap-to-view notification for the two lists
+
+확인이 필요한 일 and 이미 정리된 일 are read with the eyes, not the ears: they are
+titles, list names, and links, which a voice turns into a wall of sound. So they
+get their own repeating notification **one minute after** the readout — silent, so
+it never chimes over the speech, with the counts in the body and 확인이 필요한 일's
+count on the app icon. Tapping it opens the app and scrolls straight to those two
+sections (`BriefScheduler.onItemsRequested` -> `BriefStore.pendingItemsFocus` ->
+`BriefView`). Nothing in either list, no notification.
 
 ### Tier 2 — hands-free full readout (opt-in)
 
 With **Hands-free** on, the app keeps an `AVAudioSession` alive playing a
 near-silent loop, with `UIBackgroundModes: audio` declared. iOS therefore doesn't
 suspend the process, so a `Timer` can fire at the set time and speak the
-**entire** brief.
+**entire** first section.
 
 This is the alarm-clock pattern. Honest trade-offs:
 
-- ✅ The whole brief, not 30 seconds. Works from the background and the lock
-  screen.
+- ✅ The whole first section, not a 30-second trim of it. Works from the
+  background and the lock screen.
 - ⚠️ **Uses more battery** — which is why it's a setting, off by default.
 - ⚠️ **Does not survive a force-quit or a reboot.** Tier 1 covers those.
 
 ### Tier 3 — tapping the notification
 
-Opening the notification (the banner, or the "Read it to me" action) reads the
-full brief immediately.
+Opening the readout notification (the banner, or the "읽어 주기" action) reads the
+time blocks immediately.
 
 ### Keeping the audio current
 
@@ -80,14 +98,17 @@ sources, `EventKitStore` is the only place to change — `GatheredContext` is th
 seam everything downstream depends on.
 
 The brief keeps the skill's structure: day-date line, one serif headline, one
-unbroken terrain stroke with meeting dots and a single clay accent, three acts,
-then Needs attention above Already sorted.
+unbroken terrain stroke with meeting dots and a single clay accent, three time
+blocks, then 확인이 필요한 일 above 이미 정리된 일. Everything down to the three time
+blocks is what gets read aloud; the two lists below the hard edge are what the
+second notification points at.
 
 ## Optional: let Claude write the prose
 
 Off by default. `BriefBuilder` decides *what* the brief says and where every fact
 came from; with a key in Settings, `ClaudeBriefWriter` sends the day's titles and
-times to the Messages API (`claude-opus-5`) and gets back replacement sentences.
+times to the Messages API (`claude-opus-5`) and gets back replacement sentences in
+Korean — 해요체, with the reader's own event and task titles left untranslated.
 
 The merge is deliberately narrow: **only sentences and the headline** are taken
 from the response, keyed by ids the app sent. Titles, links, source phrases, and
@@ -213,15 +234,15 @@ provisioning profile picks the capability up on the next `fetch-signing-files`.
 Grant Calendar, Reminders, and Notifications when asked, then set your time in
 Settings. Two things worth doing:
 
-- **Download a better voice.** Settings › Accessibility › Spoken Content ›
-  Voices — Enhanced and Premium voices are free and sound markedly better than
-  the default. The app picks the best installed voice automatically.
-- **Check the voice language.** The brief is written in English, so the app
-  defaults to an English voice rather than following the device language — a
-  voice built for another language reads English through that language's
-  phonetics and sounds stilted. Settings › Voice › Language picks the accent
-  (English (United Kingdom), English (Australia), …) and the Voice picker below
-  it then lists only that language's voices.
+- **Download a better Korean voice.** 설정 › 손쉬운 사용 › 콘텐츠 말하기 › 음성 ›
+  한국어 — the Enhanced and Premium voices are free and sound markedly better
+  than the compact one iOS ships with. They appear in the app's Voice picker as
+  soon as they finish downloading.
+- **Leave the voice on 자동 unless you have a reason not to.** The default is the
+  best-quality *female* Korean voice installed: quality is ranked within the
+  female voices, so a premium male voice never wins the default
+  (`BriefNarrator.defaultVoice(for:)`). The picker still lists every Korean voice
+  on the device.
 - **Check the ringer isn't silenced** before relying on tier 1.
 
 ### Testing the readout without waiting until morning
@@ -238,22 +259,23 @@ quit the app after scheduling — the notification should still fire and speak.
 MorningBrief/
 ├── Model/
 │   ├── Brief.swift             Brief, Act, BriefItem, MeetingDot, DayShape, Motif
+│   ├── KoreanText.swift        Pinned ko_KR locale, 조사 attachment, duration wording
 │   └── Settings.swift          UserDefaults-backed settings + Keychain for the API key
 ├── Data/
 │   ├── EventKitStore.swift     Calendar + Reminders -> Sendable value types
 │   ├── BriefBuilder.swift      Day classification, acts, dots, sorting, on-device prose
 │   └── BriefStore.swift        Coordinates gather -> build -> polish -> cache -> schedule
 ├── Speech/
-│   ├── BriefScript.swift       Brief -> spoken script (full, and a 30s teaser)
+│   ├── BriefScript.swift       Brief -> spoken Korean (first section, and a 30s teaser)
 │   ├── BriefNarrator.swift     Live readout via AVSpeechSynthesizer
 │   ├── SpokenSoundRenderer.swift  Offline TTS -> Library/Sounds/*.caf  (tier 1)
 │   └── AudioKeepAlive.swift    Background audio session               (tier 2)
 ├── Scheduling/
-│   └── BriefScheduler.swift    Notifications, hands-free timer, BGAppRefreshTask
+│   └── BriefScheduler.swift    Both notifications, hands-free timer, BGAppRefreshTask
 ├── Writer/
-│   └── ClaudeBriefWriter.swift Optional Messages API prose pass
+│   └── ClaudeBriefWriter.swift Optional Messages API prose pass (Korean, 해요체)
 └── Views/
-    ├── BriefView.swift         The two bands
+    ├── BriefView.swift         The two bands, and the scroll to the second one
     ├── TerrainView.swift       The day as one unbroken stroke
     ├── SettingsView.swift
     └── Theme.swift             Palette and type
@@ -276,3 +298,10 @@ which is a clean fallback rather than a broken one. For the real face, drop
   doesn't run.
 - Reminders stand in for the skill's email and chat asks. There's no "have I
   already replied to this thread" check, because there's no thread to look at.
+- Korean only. Every generated sentence is written in Korean by
+  `BriefBuilder`, so there is no second language to fall back to — event and
+  reminder titles are carried through in whatever language they were typed.
+- 조사 (을/를, 이/가, 으로/로) are attached at runtime from the pronunciation of the
+  title in front of them, including digits and Latin letters (`KoreanEnding`).
+  A title ending in something unpronounceable — an emoji, a bracket — falls back
+  to the vowel form.

@@ -23,6 +23,12 @@ final class BriefStore: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var lastRefreshed: Date?
 
+    /// Set when the items notification is tapped, cleared once the page has
+    /// scrolled to the two lists. It is held here rather than handled in the view
+    /// because a tap that launches the app arrives before there is a view to
+    /// handle it.
+    @Published private(set) var pendingItemsFocus = false
+
     private let store = EventKitStore()
     private let log = Logger(subsystem: "com.morningbrief", category: "store")
 
@@ -113,6 +119,20 @@ final class BriefStore: ObservableObject {
             }
             speakNow()
         }
+    }
+
+    // MARK: - Needs attention / Already sorted
+
+    /// The items notification was tapped. Nothing is spoken — these two sections
+    /// are read with the eyes.
+    func showItems() {
+        pendingItemsFocus = true
+        BriefScheduler.shared.clearBadge()
+        Task { await refresh() }
+    }
+
+    func itemsShown() {
+        pendingItemsFocus = false
     }
 
     func rearmTimer() {

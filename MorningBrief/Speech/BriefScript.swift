@@ -1,68 +1,46 @@
 import Foundation
 
-/// Turns a `Brief` into something that sounds right read aloud.
+/// Turns a `Brief` into something that sounds right read aloud in Korean.
+///
+/// Only the first section is spoken — the greeting, the day, the headline, and
+/// the three time blocks. What needs attention and what is already sorted are
+/// things to look at: they carry titles, links, and list names that a voice
+/// turns into a wall of sound, so they arrive as a notification the reader taps
+/// instead of being read out.
 ///
 /// Two lengths, for two different delivery paths:
-/// - `full` is the whole brief, spoken when the app is alive at the set time
-///   (or when the notification is tapped).
+/// - `spoken` is the whole first section, read when the app is alive at the set
+///   time (or when the notification is tapped).
 /// - `teaser` is trimmed to fit inside a notification sound, which iOS caps at
 ///   30 seconds. It has to stand on its own — most mornings it's all that plays.
 struct BriefScript {
     let brief: Brief
 
-    /// Rough words-per-second for AVSpeechSynthesizer at rate 0.5.
-    private static let wordsPerSecond = 2.6
+    /// Rough syllables-per-second for a Korean voice at rate 0.5. Counted in
+    /// characters rather than words: Korean words are long and the spacing is
+    /// nothing like English, so words are a poor proxy for duration.
+    private static let charactersPerSecond = 5.5
 
-    /// The whole brief.
-    var full: String {
-        var lines: [String] = []
-        lines.append("\(greeting). \(spokenDayLine).")
+    /// The time blocks, and nothing below them.
+    var spoken: String {
+        var lines = ["\(greeting). \(spokenDayLine)."]
         lines.append(spoken(brief.headline))
 
         for act in brief.acts where !act.sentence.isEmpty {
-            lines.append("\(spokenRange(act.range)). \(spoken(act.sentence))")
-        }
-
-        if brief.needsAttention.isEmpty && brief.resolved.isEmpty {
-            lines.append("Nothing needs you this morning.")
-        }
-
-        if !brief.needsAttention.isEmpty {
-            let count = brief.needsAttention.count
-            let noun = count == 1 ? "thing needs" : "things need"
-            lines.append("\(count.spelledOut.capitalizedFirst) \(noun) you today.")
-            for (index, item) in brief.needsAttention.enumerated() {
-                lines.append("\(ordinal(index + 1)). \(spoken(item.title)). \(spoken(item.sentence))")
-            }
-        }
-
-        if !brief.resolved.isEmpty {
-            lines.append("Already sorted:")
-            for item in brief.resolved {
-                lines.append("\(spoken(item.title)). \(spoken(item.sentence))")
-            }
+            lines.append("\(spokenRange(act.range)), \(spoken(act.sentence))")
         }
 
         return lines.joined(separator: "\n")
     }
 
     /// A version that fits in a 30-second notification sound. Trimmed by
-    /// dropping detail from the bottom up, never by cutting a sentence in half.
+    /// dropping time blocks from the bottom up, never by cutting a sentence in
+    /// half.
     var teaser: String {
         var lines = ["\(greeting). \(spoken(brief.headline))"]
 
-        if brief.needsAttention.isEmpty {
-            lines.append("Nothing needs you this morning.")
-            return lines.joined(separator: " ")
-        }
-
-        let count = brief.needsAttention.count
-        let noun = count == 1 ? "thing needs" : "things need"
-        lines.append("\(count.spelledOut.capitalizedFirst) \(noun) you.")
-
-        // Add titles while they still fit inside the budget.
-        for item in brief.needsAttention {
-            let candidate = lines + [spoken(item.title) + "."]
+        for act in brief.acts where !act.sentence.isEmpty {
+            let candidate = lines + ["\(spokenRange(act.range)), \(spoken(act.sentence))"]
             if Self.estimatedSeconds(of: candidate.joined(separator: " ")) > 26 { break }
             lines = candidate
         }
@@ -70,8 +48,8 @@ struct BriefScript {
     }
 
     static func estimatedSeconds(of text: String) -> Double {
-        let words = text.split { $0.isWhitespace || $0.isNewline }.count
-        return Double(words) / wordsPerSecond
+        let characters = text.filter { !$0.isWhitespace }.count
+        return Double(characters) / charactersPerSecond
     }
 
     // MARK: - Making text speakable
@@ -81,43 +59,42 @@ struct BriefScript {
         let name = Settings.shared.displayName.trimmingCharacters(in: .whitespaces)
         let salutation: String
         switch hour {
-        case 0..<12: salutation = "Good morning"
-        case 12..<18: salutation = "Good afternoon"
-        default: salutation = "Good evening"
+        case 0..<12: salutation = "좋은 아침이에요"
+        case 12..<18: salutation = "좋은 오후예요"
+        default: salutation = "좋은 저녁이에요"
         }
-        return name.isEmpty ? salutation : "\(salutation), \(name)"
+        return name.isEmpty ? salutation : "\(name)님, \(salutation)"
     }
 
-    /// "Monday · August 4 2026" reads badly; "Monday, August fourth" reads well.
+    /// The year adds nothing out loud, so only the month, the day, and the
+    /// weekday are spoken: "8월 4일 화요일이에요".
     private var spokenDayLine: String {
-        let weekday = DateFormatter.cached("EEEE").string(from: brief.generatedAt)
-        let month = DateFormatter.cached("MMMM").string(from: brief.generatedAt)
+        let month = Calendar.current.component(.month, from: brief.generatedAt)
         let day = Calendar.current.component(.day, from: brief.generatedAt)
-        return "\(weekday), \(month) \(ordinal(day))"
+        let weekday = DateFormatter.cached("EEEE").string(from: brief.generatedAt)
+        return "\(month)월 \(day)일 \(weekday.josa(.copula))"
     }
 
-    /// Strip the typographic characters that the synthesizer stumbles over.
+    /// Strip the typographic characters that the synthesizer stumbles over. The
+    /// dashes the brief writes for rhythm on the page become the comma a voice
+    /// can actually pause on.
     private func spoken(_ text: String) -> String {
         text
+            .replacingOccurrences(of: "—", with: ",")
+            .replacingOccurrences(of: "–", with: ",")
             .replacingOccurrences(of: "·", with: ",")
-            .replacingOccurrences(of: "—", with: " — ")
-            .replacingOccurrences(of: "–", with: " to ")
             .replacingOccurrences(of: "…", with: ".")
+            .replacingOccurrences(of: " ,", with: ",")
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: .whitespaces)
     }
 
-    /// "9:30 AM – 1 PM" -> "From nine thirty A M to one P M"
+    /// "오전 9시 30분 ~ 오후 1시" -> "오전 9시 30분부터 오후 1시까지".
+    /// A voice reads "~" as its own word, or skips it, so it never survives to
+    /// the synthesizer.
     private func spokenRange(_ range: String) -> String {
-        "From " + range
-            .replacingOccurrences(of: "–", with: "to")
-            .replacingOccurrences(of: "AM", with: "A M")
-            .replacingOccurrences(of: "PM", with: "P M")
-    }
-
-    private func ordinal(_ value: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .ordinal
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        let halves = range.components(separatedBy: " ~ ")
+        guard halves.count == 2 else { return range }
+        return "\(halves[0])부터 \(halves[1])까지"
     }
 }

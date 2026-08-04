@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The 30-second glance: two full-bleed bands that meet at a hard edge.
-/// Top band is the visual anchor (day line, headline, drawing, three acts).
-/// Bottom band is the important things — one column, full width, Needs
-/// attention above Resolved.
+/// Top band is the visual anchor (day line, headline, drawing, three acts) and
+/// the only part that is ever read aloud. Bottom band is the important things —
+/// one column, full width, 확인이 필요한 일 above 이미 정리된 일 — reached by
+/// tapping the morning's second notification.
 struct BriefView: View {
     let brief: Brief
 
@@ -11,18 +12,40 @@ struct BriefView: View {
     @EnvironmentObject private var scheduler: BriefScheduler
     @EnvironmentObject private var narrator: BriefNarrator
 
+    private static let itemsAnchor = "items"
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                anchorBand
-                Rectangle()
-                    .fill(Theme.bandEdge)
-                    .frame(height: 1)
-                importantBand
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    anchorBand
+                    Rectangle()
+                        .fill(Theme.bandEdge)
+                        .frame(height: 1)
+                    importantBand
+                        .id(Self.itemsAnchor)
+                }
+            }
+            .background(Theme.background)
+            .refreshable { await store.refresh() }
+            .task {
+                guard store.pendingItemsFocus else { return }
+                // Launched straight from the notification: give the page one
+                // beat to lay itself out before moving it.
+                try? await Task.sleep(for: .milliseconds(400))
+                focusItems(with: proxy)
+            }
+            .onChange(of: store.pendingItemsFocus) { _, pending in
+                if pending { focusItems(with: proxy) }
             }
         }
-        .background(Theme.background)
-        .refreshable { await store.refresh() }
+    }
+
+    private func focusItems(with proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.45)) {
+            proxy.scrollTo(Self.itemsAnchor, anchor: .top)
+        }
+        store.itemsShown()
     }
 
     // MARK: - Visual anchor
@@ -63,7 +86,8 @@ struct BriefView: View {
 
     /// Reading it out is the point of the app, so the control sits with the
     /// anchor rather than buried in a menu — but it stays a plain text control,
-    /// not a filled button.
+    /// not a filled button. It reads this band only, which is why it sits inside
+    /// it.
     private var readoutRow: some View {
         HStack(spacing: 18) {
             Button {
@@ -71,14 +95,14 @@ struct BriefView: View {
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: narrator.isSpeaking ? "stop.circle" : "play.circle")
-                    Text(narrator.isSpeaking ? "Stop" : "Read it to me")
+                    Text(narrator.isSpeaking ? "멈추기" : "읽어 주기")
                 }
                 .font(Theme.body)
                 .foregroundStyle(Theme.clay)
             }
 
             if let next = scheduler.nextFireDate {
-                Text("Next: \(next, format: .dateTime.weekday(.abbreviated).hour().minute())")
+                Text("다음 \(next, format: .dateTime.weekday(.abbreviated).hour().minute())")
                     .font(Theme.caption)
                     .foregroundStyle(Theme.inkGrey)
             }
@@ -90,20 +114,20 @@ struct BriefView: View {
     private var importantBand: some View {
         VStack(alignment: .leading, spacing: 30) {
             if brief.isEmpty {
-                Text("Nothing needs you this morning.")
+                Text("오늘 아침은 따로 챙길 일이 없어요.")
                     .font(Theme.body)
                     .foregroundStyle(Theme.inkSoft)
             } else {
                 if !brief.needsAttention.isEmpty {
-                    ItemListView(heading: "Needs attention", items: brief.needsAttention)
+                    ItemListView(heading: "확인이 필요한 일", items: brief.needsAttention)
                 }
                 if !brief.resolved.isEmpty {
-                    ItemListView(heading: "Already sorted", items: brief.resolved)
+                    ItemListView(heading: "이미 정리된 일", items: brief.resolved)
                 }
             }
 
             if brief.onlyCalendarConnected {
-                Text("Only your calendar is connected. Allowing Reminders adds what's actually owed today.")
+                Text("캘린더만 연결되어 있어요. 미리 알림까지 허용하면 오늘 실제로 해야 할 일이 함께 들어와요.")
                     .font(Theme.caption)
                     .foregroundStyle(Theme.inkGrey)
             }
