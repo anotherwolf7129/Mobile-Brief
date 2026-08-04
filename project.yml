@@ -27,7 +27,7 @@ targets:
       - path: MorningBrief
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.morningbrief.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.anotherwolf.closure
         PRODUCT_NAME: MorningBrief
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Info.plist
