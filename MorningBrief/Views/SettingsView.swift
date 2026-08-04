@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var apiKey: String = KeychainStore.apiKey() ?? ""
+    @State private var languages: [String] = []
     @State private var voices: [AVSpeechSynthesisVoice] = []
 
     var body: some View {
@@ -29,7 +30,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .onAppear { voices = BriefNarrator.availableVoices() }
+            .onAppear { reloadVoices() }
         }
     }
 
@@ -92,6 +93,22 @@ struct SettingsView: View {
 
     private var voiceSection: some View {
         Section {
+            // Bound to the resolved language rather than the raw setting, so the
+            // picker shows what will actually be spoken before a choice is made.
+            Picker("Language", selection: Binding(
+                get: { BriefNarrator.narrationLanguage() },
+                set: { language in
+                    settings.voiceLanguage = language
+                    // The old voice belongs to the old language.
+                    settings.voiceIdentifier = nil
+                    reloadVoices()
+                }
+            )) {
+                ForEach(languages, id: \.self) { language in
+                    Text(BriefNarrator.languageLabel(for: language)).tag(language)
+                }
+            }
+
             Picker("Voice", selection: Binding(
                 get: { settings.voiceIdentifier ?? "" },
                 set: { settings.voiceIdentifier = $0.isEmpty ? nil : $0 }
@@ -115,8 +132,16 @@ struct SettingsView: View {
         } header: {
             Text("Voice")
         } footer: {
-            Text("Enhanced and premium voices sound markedly better and are free — download them in Settings › Accessibility › Spoken Content › Voices.")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("The brief is written in English, so an English voice reads it best — a voice made for another language sounds out English words through that language and comes off stilted. Pick the accent you'd rather hear.")
+                Text("Enhanced and premium voices sound markedly better and are free — download them in Settings › Accessibility › Spoken Content › Voices. New ones show up here once installed.")
+            }
         }
+    }
+
+    private func reloadVoices() {
+        languages = BriefNarrator.availableLanguages()
+        voices = BriefNarrator.availableVoices()
     }
 
     private func label(for voice: AVSpeechSynthesisVoice) -> String {

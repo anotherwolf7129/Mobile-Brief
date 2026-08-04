@@ -16,6 +16,7 @@ final class Settings: ObservableObject {
         static let minute = "brief.minute"
         static let weekdaysOnly = "brief.weekdaysOnly"
         static let handsFree = "brief.handsFree"
+        static let voiceLanguage = "brief.voiceLanguage"
         static let voiceIdentifier = "brief.voiceIdentifier"
         static let speechRate = "brief.speechRate"
         static let useClaude = "brief.useClaude"
@@ -43,6 +44,18 @@ final class Settings: ObservableObject {
     /// but not a force-quit or a reboot.
     @Published var handsFree: Bool = false {
         didSet { defaults.set(handsFree, forKey: Key.handsFree) }
+    }
+
+    /// BCP-47 tag of the language the brief is read in, e.g. `en-GB`.
+    /// Nil means let `BriefNarrator` resolve it — see `narrationLanguage()`.
+    @Published var voiceLanguage: String? {
+        didSet {
+            if let voiceLanguage {
+                defaults.set(voiceLanguage, forKey: Key.voiceLanguage)
+            } else {
+                defaults.removeObject(forKey: Key.voiceLanguage)
+            }
+        }
     }
 
     @Published var voiceIdentifier: String? {
@@ -91,6 +104,7 @@ final class Settings: ObservableObject {
         minute = defaults.integer(forKey: Key.minute)
         weekdaysOnly = defaults.bool(forKey: Key.weekdaysOnly)
         handsFree = defaults.bool(forKey: Key.handsFree)
+        voiceLanguage = defaults.string(forKey: Key.voiceLanguage)
         voiceIdentifier = defaults.string(forKey: Key.voiceIdentifier)
         speechRate = defaults.double(forKey: Key.speechRate)
         useClaude = defaults.bool(forKey: Key.useClaude)
