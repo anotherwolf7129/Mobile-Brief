@@ -1,0 +1,203 @@
+# Ships MorningBrief to TestFlight from a GitHub-hosted macOS runner.
+#
+# This is a port of codemagic.yaml, kept deliberately close to it so the two
+# can't drift in behaviour: XcodeGen -> verify bundle ID -> pick a build number
+# -> fetch signing files -> build -> upload. The signing steps use the same
+# codemagic-cli-tools package Codemagic runs internally (`app-store-connect`,
+# `keychain`, `xcode-project`), which is a plain pip package and works on any
+# macOS host.
+#
+# Setup — four repository secrets, under Settings › Secrets and variables ›
+# Actions. No Apple ID password is involved anywhere; an App Store Connect API
+# key replaces it, is scoped to one app role, and can be revoked on its own.
+#
+#   APP_STORE_CONNECT_ISSUER_ID      App Store Connect › Users and Access ›
+#                                    Integrations › App Store Connect API. The
+#                                    UUID printed above the key table.
+#   APP_STORE_CONNECT_KEY_IDENTIFIER The 10-character Key ID of the key.
+#   APP_STORE_CONNECT_PRIVATE_KEY    Full contents of the AuthKey_<KeyID>.p8
+#                                    download, BEGIN/END lines included. Apple
+#                                    lets you download it exactly once.
+#   CERTIFICATE_PRIVATE_KEY          2048-bit RSA key in PEM form:
+#                                      ssh-keygen -t rsa -b 2048 -m PEM \
+#                                        -f cert_key -q -N ''
+#                                    Paste all of `cert_key`. See the README for
+#                                    why the API key alone isn't enough.
+#
+# The first three are the same key already wired into Codemagic as the
+# "code magic_api_key" integration — if that .p8 is still on disk, reuse it.
+
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit_to_testflight:
+        description: "Submit to TestFlight beta review for external testing"
+        type: boolean
+        default: true
+
+concurrency:
+  # Two uploads racing would both compute the same "latest + 1" build number,
+  # and App Store Connect rejects the second one.
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # iOS archiving needs Xcode, so this cannot run on the Linux runners.
+    # macOS minutes bill at 10x on private repos — hence workflow_dispatch
+    # only, rather than on every push.
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      # codemagic-cli-tools reads all three of these implicitly.
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      CERTIFICATE_PRIVATE_KEY: ${{ secrets.CERTIFICATE_PRIVATE_KEY }}
+      # Must match PRODUCT_BUNDLE_IDENTIFIER in project.yml — the "Verify
+      # bundle ID" step below fails the build early if they ever drift.
+      BUNDLE_ID: "com.anotherwolf.closure"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        # Without this the run gets as far as the keychain step before failing
+        # with a message that reads like a keychain problem rather than a
+        # missing secret.
+        run: |
+          set -eu
+          missing=0
+          # Checked one by one rather than through indirect expansion, which
+          # behaves differently under the bash 3.2 macOS still ships.
+          [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]      || { echo "  APP_STORE_CONNECT_ISSUER_ID"; missing=1; }
+          [ -n "${APP_STORE_CONNECT_KEY_IDENTIFIER:-}" ] || { echo "  APP_STORE_CONNECT_KEY_IDENTIFIER"; missing=1; }
+          [ -n "${APP_STORE_CONNECT_PRIVATE_KEY:-}" ]    || { echo "  APP_STORE_CONNECT_PRIVATE_KEY"; missing=1; }
+          [ -n "${CERTIFICATE_PRIVATE_KEY:-}" ]          || { echo "  CERTIFICATE_PRIVATE_KEY"; missing=1; }
+          if [ "$missing" -ne 0 ]; then
+            echo "The secrets listed above are missing or empty."
+            echo "Add them under Settings > Secrets and variables > Actions."
+            echo "See the header of .github/workflows/testflight.yml for where"
+            echo "each value comes from."
+            exit 1
+          fi
+          echo "All four secrets are present."
+
+      - name: Install tooling
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          # Homebrew's Python is externally managed, so pip install would be
+          # refused here; pipx is preinstalled on the runner image.
+          pipx install codemagic-cli-tools
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodegen generate
+
+      - name: Verify bundle ID matches the project spec
+        run: |
+          set -euo pipefail
+          SPEC_ID=$(grep -m1 'PRODUCT_BUNDLE_IDENTIFIER:' project.yml | awk '{print $2}')
+          if [ "$SPEC_ID" != "$BUNDLE_ID" ]; then
+            echo "BUNDLE_ID ($BUNDLE_ID) does not match project.yml ($SPEC_ID)."
+            echo "Signing would fetch a profile for a bundle ID the app never uses."
+            exit 1
+          fi
+          echo "Bundle ID: $BUNDLE_ID"
+
+      - name: Set build number
+        run: |
+          set -euo pipefail
+          # TestFlight rejects a build whose number was already uploaded, so
+          # never ship a hardcoded CURRENT_PROJECT_VERSION. Ask App Store
+          # Connect what the last one was; fall back to the run number when the
+          # app record doesn't exist yet (first ever upload).
+          LATEST=""
+          APP_ID=$(app-store-connect list-apps \
+                     --bundle-id-identifier "$BUNDLE_ID" \
+                     --bundle-id-identifier-strict-match \
+                     --json 2>/dev/null \
+                   | jq -r 'if type == "array" and length > 0 then .[0].id else empty end' || true)
+          if [ -n "$APP_ID" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_ID" 2>/dev/null || true)
+          fi
+          case "$LATEST" in
+            ''|*[!0-9]*) LATEST=0 ;;
+          esac
+          NEXT=$((LATEST + 1))
+          if [ "${GITHUB_RUN_NUMBER:-0}" -gt "$NEXT" ]; then
+            NEXT=$GITHUB_RUN_NUMBER
+          fi
+          echo "Latest on TestFlight: $LATEST -> building $NEXT"
+          # BSD sed: the empty '' argument to -i is required on macOS.
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $NEXT;/g" \
+            MorningBrief.xcodeproj/project.pbxproj
+
+      - name: Fetch signing files
+        run: |
+          set -euo pipefail
+          # The App Store Connect API key authenticates the request, but it does
+          # not carry the distribution certificate's private key. Apple only ever
+          # hands back the public certificate, so the .p12 that gets imported into
+          # the keychain can only be assembled from a private key we supply.
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key "@env:CERTIFICATE_PRIVATE_KEY" \
+            --strict-match-identifier \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build IPA
+        run: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --project "MorningBrief.xcodeproj" \
+            --scheme "MorningBrief"
+
+      - name: Upload to TestFlight
+        run: |
+          set -euo pipefail
+          # --testflight submits for beta review (needed for external testers).
+          # Without it the build still lands in App Store Connect and is usable
+          # by internal testers straight away.
+          if [ "${{ inputs.submit_to_testflight }}" = "true" ]; then
+            app-store-connect publish \
+              --path "build/ios/ipa/*.ipa" \
+              --testflight
+          else
+            app-store-connect publish \
+              --path "build/ios/ipa/*.ipa"
+          fi
+
+      - name: Stage artifacts
+        # Copied into one directory first because the upload action globs
+        # relative to the workspace, and the logs and dSYMs live outside it.
+        if: always()
+        run: |
+          set -eu
+          mkdir -p artifacts
+          cp build/ios/ipa/*.ipa artifacts/ 2>/dev/null || true
+          cp /tmp/xcodebuild_logs/*.log artifacts/ 2>/dev/null || true
+          find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 6 -name '*.dSYM' \
+            -exec cp -R {} artifacts/ \; 2>/dev/null || true
+          ls -la artifacts/ || true
+
+      - name: Upload artifacts
+        # Runs even on failure — the xcodebuild log is the only way to tell a
+        # signing failure apart from a compile failure after the fact.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-build
+          if-no-files-found: warn
+          retention-days: 14
+          path: artifacts/

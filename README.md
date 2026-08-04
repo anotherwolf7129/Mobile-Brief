@@ -116,14 +116,58 @@ Then:
 
 1. **Signing** — the bundle ID is `com.anotherwolf.closure`. To ship under your
    own, change `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` **and** `BUNDLE_ID`
-   in `codemagic.yaml`; CI fails fast if the two disagree. Select the
-   `MorningBrief` target › Signing & Capabilities and pick your team.
+   in both `codemagic.yaml` and `.github/workflows/testflight.yml`; either CI
+   config fails fast if it disagrees with the spec. Select the `MorningBrief`
+   target › Signing & Capabilities and pick your team.
 2. **Archive** — Product › Archive, then Distribute App › TestFlight.
 3. Export compliance is pre-answered: `ITSAppUsesNonExemptEncryption` is `false`
    in `Support/Info.plist` (HTTPS via system libraries only), so uploads don't
    prompt for it.
 
 ### Shipping from CI
+
+There are two equivalent paths, and they do the same six things: XcodeGen →
+verify bundle ID → pick a build number → fetch signing files → build → upload.
+
+| | Where | Trigger |
+|---|---|---|
+| `codemagic.yaml` | Codemagic | On push, per the Codemagic UI |
+| `.github/workflows/testflight.yml` | GitHub Actions, `macos-15` runner | Manual — Actions tab › TestFlight › Run workflow |
+
+The GitHub Actions one exists so a Codemagic outage or account problem isn't a
+hard block on shipping. It installs `codemagic-cli-tools` from pip — the same
+`app-store-connect`, `keychain` and `xcode-project` commands Codemagic runs
+internally — so the two configs stay behaviourally identical and a fix to one
+usually ports to the other verbatim. It's `workflow_dispatch` only on purpose:
+macOS runner minutes bill at 10× on private repos, so builds shouldn't fire on
+every push.
+
+Either way, **an Apple ID password is never used**. Uploading with an Apple ID
+means handing full account access to a build machine and getting stopped by 2FA;
+an App Store Connect API key is scoped to one role, works unattended, and can be
+revoked on its own without touching the account.
+
+#### Secrets for the GitHub Actions workflow
+
+Four, under Settings › Secrets and variables › Actions:
+
+| Secret | Where it comes from |
+|---|---|
+| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect › Users and Access › Integrations › App Store Connect API — the UUID above the key table |
+| `APP_STORE_CONNECT_KEY_IDENTIFIER` | The 10-character Key ID of that key |
+| `APP_STORE_CONNECT_PRIVATE_KEY` | Full contents of `AuthKey_<KeyID>.p8`, `BEGIN`/`END` lines included — Apple lets you download it exactly once |
+| `CERTIFICATE_PRIVATE_KEY` | The same RSA PEM described below |
+
+The first three are the key already wired into Codemagic as the
+`code magic_api_key` integration. If that `.p8` is still on disk, reuse it; if
+not, mint a new key with **App Manager** access — old keys keep working, so
+there's no cleanup needed.
+
+The workflow checks all four up front and names the ones that are missing,
+rather than failing later inside the keychain step where the error reads like
+something else entirely.
+
+#### Shipping on Codemagic
 
 `codemagic.yaml` runs the whole path on Codemagic: XcodeGen → fetch signing
 files for `$BUNDLE_ID` → build → upload to TestFlight.
