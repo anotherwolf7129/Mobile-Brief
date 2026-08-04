@@ -2,30 +2,78 @@ workflows:
   ios-testflight:
     name: MorningBrief TestFlight Build
     instance_type: mac_mini_m2
+    max_build_duration: 60
     environment:
       xcode: 16.0
       vars:
-        # Change this to your unique App ID from the Apple Developer portal
-        BUNDLE_ID: "com.anotherwolf.morningbrief" 
+        # Must match PRODUCT_BUNDLE_IDENTIFIER in project.yml — the "Verify
+        # bundle ID" step below fails the build early if they ever drift again.
+        BUNDLE_ID: "com.anotherwolf.closure"
     integrations:
-      # This now perfectly matches your screenshot!
       app_store_connect: "code magic_api_key"
     scripts:
-      - name: Generate Xcode Project
+      - name: Generate Xcode project
         script: |
+          set -e
           brew install xcodegen
           xcodegen generate
+
+      - name: Verify bundle ID matches the project spec
+        script: |
+          set -e
+          SPEC_ID=$(grep -m1 'PRODUCT_BUNDLE_IDENTIFIER:' project.yml | awk '{print $2}')
+          if [ "$SPEC_ID" != "$BUNDLE_ID" ]; then
+            echo "BUNDLE_ID ($BUNDLE_ID) does not match project.yml ($SPEC_ID)."
+            echo "Signing would fetch a profile for a bundle ID the app never uses."
+            exit 1
+          fi
+          echo "Bundle ID: $BUNDLE_ID"
+
+      - name: Set build number
+        script: |
+          set -e
+          # TestFlight rejects a build whose number was already uploaded, so
+          # never ship a hardcoded CURRENT_PROJECT_VERSION. Ask App Store
+          # Connect what the last one was; fall back to Codemagic's counter
+          # when the app record doesn't exist yet (first ever upload).
+          LATEST=""
+          APP_ID=$(app-store-connect list-apps \
+                     --bundle-id-identifier "$BUNDLE_ID" \
+                     --bundle-id-identifier-strict-match \
+                     --json 2>/dev/null \
+                   | jq -r 'if type == "array" and length > 0 then .[0].id else empty end' || true)
+          if [ -n "$APP_ID" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_ID" 2>/dev/null || true)
+          fi
+          case "$LATEST" in
+            ''|*[!0-9]*) LATEST=0 ;;
+          esac
+          NEXT=$((LATEST + 1))
+          if [ "${BUILD_NUMBER:-0}" -gt "$NEXT" ]; then
+            NEXT=$BUILD_NUMBER
+          fi
+          echo "Latest on TestFlight: $LATEST -> building $NEXT"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $NEXT;/g" \
+            MorningBrief.xcodeproj/project.pbxproj
+
       - name: Fetch signing files
         script: |
+          set -e
           keychain initialize
-          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
           xcode-project use-profiles
+
       - name: Build IPA
         script: |
-          xcode-project build-ipa --project "MorningBrief.xcodeproj" --scheme "MorningBrief"
+          set -e
+          xcode-project build-ipa \
+            --project "MorningBrief.xcodeproj" \
+            --scheme "MorningBrief"
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     publishing:
       app_store_connect:
         auth: integration

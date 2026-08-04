@@ -104,33 +104,47 @@ key is stored in the Keychain, never in `UserDefaults`.
 
 Requires **Xcode 16 or newer** (the project uses synchronized folder groups).
 
-```bash
-open MorningBrief.xcodeproj
-```
-
-Or regenerate the project from the checked-in spec:
+`MorningBrief.xcodeproj` is generated, not committed — `project.yml` is the
+source of truth. Generate it first:
 
 ```bash
 brew install xcodegen && xcodegen generate
+open MorningBrief.xcodeproj
 ```
 
 Then:
 
-1. **Signing** — select the `MorningBrief` target › Signing & Capabilities, pick
-   your team, and change `PRODUCT_BUNDLE_IDENTIFIER` from `com.morningbrief.app`
-   to something you own.
+1. **Signing** — the bundle ID is `com.anotherwolf.closure`. To ship under your
+   own, change `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` **and** `BUNDLE_ID`
+   in `codemagic.yaml`; CI fails fast if the two disagree. Select the
+   `MorningBrief` target › Signing & Capabilities and pick your team.
 2. **Archive** — Product › Archive, then Distribute App › TestFlight.
 3. Export compliance is pre-answered: `ITSAppUsesNonExemptEncryption` is `false`
    in `Support/Info.plist` (HTTPS via system libraries only), so uploads don't
    prompt for it.
 
-### If signing complains about the entitlement
+### Shipping from CI
 
-`Support/MorningBrief.entitlements` requests
-`com.apple.developer.usernotifications.time-sensitive`. If your team can't add
-that capability, delete the file and clear `CODE_SIGN_ENTITLEMENTS` in both build
-configurations. The notification then arrives at the `.active` level instead —
-still plays the spoken sound, it just doesn't pierce Focus.
+`codemagic.yaml` runs the whole path on Codemagic: XcodeGen → fetch signing
+files for `$BUNDLE_ID` → build → upload to TestFlight. Two things it handles
+that are easy to get wrong by hand:
+
+- **Build number.** `CURRENT_PROJECT_VERSION` in `project.yml` stays at `1`;
+  CI overwrites it in the generated project with `last TestFlight build + 1`.
+  App Store Connect rejects a build number it has already seen, so a fixed
+  value only ever works once.
+- **Bundle ID drift.** The signing profile is fetched by bundle ID. If
+  `BUNDLE_ID` doesn't match the project, the profile that comes back doesn't
+  match the app being built and the archive fails to sign.
+
+### Time-sensitive notifications
+
+The app asks for `.timeSensitive` interruption level so the readout pierces
+Focus. That needs the `com.apple.developer.usernotifications.time-sensitive`
+entitlement, which isn't currently requested — the notification arrives at the
+`.active` level instead. It still plays the spoken sound. To turn it on, add an
+`entitlements` block to the `MorningBrief` target in `project.yml`; the
+provisioning profile picks the capability up on the next `fetch-signing-files`.
 
 ### First run
 

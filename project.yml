@@ -1,13 +1,13 @@
-# XcodeGen spec — the reproducible way to (re)generate MorningBrief.xcodeproj.
+# XcodeGen spec — the single source of truth for MorningBrief.xcodeproj.
 #
 #   brew install xcodegen && xcodegen generate
 #
-# A checked-in .xcodeproj is also provided, so this is only needed if you'd
-# rather generate than trust the committed one.
+# The .xcodeproj is generated, not committed: CI regenerates it on every build,
+# so a checked-in copy can only ever drift out of sync with this file.
 name: MorningBrief
 
 options:
-  bundleIdPrefix: com.morningbrief
+  bundleIdPrefix: com.anotherwolf
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -39,3 +39,22 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_EMIT_LOC_STRINGS: YES
+
+# Declared explicitly rather than left to Xcode: Xcode only auto-creates a
+# scheme when a human opens the project, and it isn't shared. CI never opens
+# it, so `build-ipa --scheme MorningBrief` needs the scheme to exist on disk.
+schemes:
+  MorningBrief:
+    build:
+      targets:
+        MorningBrief: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    test:
+      config: Debug
