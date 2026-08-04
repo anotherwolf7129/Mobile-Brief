@@ -6,7 +6,7 @@ workflows:
       xcode: 16.0
       vars:
         # Change this to your unique App ID from the Apple Developer portal
-        BUNDLE_ID: "com.jphong.morningbrief" 
+        BUNDLE_ID: "com.anotherwolf.morningbrief" 
     integrations:
       # This now perfectly matches your screenshot!
       app_store_connect: "code magic_api_key"
