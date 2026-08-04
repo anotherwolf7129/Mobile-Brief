@@ -143,7 +143,7 @@ actor EventKitStore {
             .participantStatus
         return CalendarEvent(
             id: event.eventIdentifier ?? UUID().uuidString,
-            title: event.title ?? "Untitled",
+            title: event.title ?? "제목 없는 일정",
             start: start,
             end: end,
             isAllDay: event.isAllDay,
@@ -160,10 +160,10 @@ actor EventKitStore {
     private static func flatten(_ reminder: EKReminder) -> ReminderItem? {
         ReminderItem(
             id: reminder.calendarItemIdentifier,
-            title: reminder.title ?? "Untitled",
+            title: reminder.title ?? "제목 없는 할 일",
             due: reminder.dueDateComponents?.date,
             notes: reminder.notes,
-            listName: reminder.calendar?.title ?? "Reminders",
+            listName: reminder.calendar?.title ?? "미리 알림",
             priority: reminder.priority,
             isCompleted: reminder.isCompleted,
             completedAt: reminder.completionDate,

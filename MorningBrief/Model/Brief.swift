@@ -47,8 +47,8 @@ struct MeetingDot: Codable, Identifiable {
 /// One of the three columns beneath the drawing.
 struct Act: Codable, Identifiable {
     var id: String { range }
-    /// "9:30 AM – 1 PM" — uppercase AM/PM on the trailing time, and on the
-    /// leading time too when the range crosses noon.
+    /// "오전 9시 30분 ~ 오후 1시" — the 오전/오후 repeats on the trailing time only
+    /// when the range crosses noon.
     let range: String
     /// One sentence earned from the calendar. Never padded.
     let sentence: String
@@ -77,7 +77,7 @@ struct BriefItem: Codable, Identifiable {
 
 struct Brief: Codable {
     let generatedAt: Date
-    /// "Monday · August 4 2026"
+    /// "2026년 8월 4일 · 화요일"
     let dayLine: String
     /// One serif line, spoken like a friend handing over the day.
     let headline: String
@@ -96,7 +96,7 @@ struct Brief: Codable {
         Brief(
             generatedAt: now,
             dayLine: DateFormatting.dayLine(for: now),
-            headline: "Your day hasn't been read yet.",
+            headline: "아직 하루를 읽지 않았어요.",
             shape: .open,
             acts: [],
             meetings: [],
@@ -108,38 +108,41 @@ struct Brief: Codable {
 }
 
 enum DateFormatting {
-    /// "Monday · August 4 2026"
+    /// "2026년 8월 4일 · 화요일"
     static func dayLine(for date: Date) -> String {
+        let day = DateFormatter.cached("yyyy년 M월 d일").string(from: date)
         let weekday = DateFormatter.cached("EEEE").string(from: date)
-        let month = DateFormatter.cached("MMMM").string(from: date)
-        let day = Calendar.current.component(.day, from: date)
-        let year = Calendar.current.component(.year, from: date)
-        return "\(weekday) · \(month) \(day) \(year)"
+        return "\(day) · \(weekday)"
     }
 
-    /// "9:30 AM", or "1" when the meridiem is carried by the other end of the range.
+    /// "오전 9시 30분", or "9시 30분" when the 오전/오후 is carried by the other end
+    /// of the range. Written out in full rather than as "9:30" because this same
+    /// string is read aloud, and a Korean voice sounds out digits and colons
+    /// inconsistently.
     static func time(_ date: Date, includeMeridiem: Bool) -> String {
-        let cal = Calendar.current
-        let hour24 = cal.component(.hour, from: date)
-        let minute = cal.component(.minute, from: date)
+        let calendar = Calendar.current
+        let hour24 = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
         var hour = hour24 % 12
         if hour == 0 { hour = 12 }
-        var text = minute == 0 ? "\(hour)" : String(format: "%d:%02d", hour, minute)
-        if includeMeridiem { text += hour24 < 12 ? " AM" : " PM" }
-        return text
+        let clock = minute == 0 ? "\(hour)시" : "\(hour)시 \(minute)분"
+        guard includeMeridiem else { return clock }
+        return (hour24 < 12 ? "오전 " : "오후 ") + clock
     }
 
-    /// "9:30 AM – 1 PM" / "1 – 3:30 PM" / "3:30 PM onward"
+    /// "오전 9시 30분 ~ 오후 1시" / "오전 9시 ~ 11시 30분" / "오후 3시 30분부터"
     static func range(from start: Date, to end: Date?) -> String {
-        let cal = Calendar.current
+        let calendar = Calendar.current
         guard let end else {
-            return "\(time(start, includeMeridiem: true)) onward"
+            return "\(time(start, includeMeridiem: true))부터"
         }
-        let crossesNoon = cal.component(.hour, from: start) < 12
-            && cal.component(.hour, from: end) >= 12
-        let lead = time(start, includeMeridiem: crossesNoon)
-        let trail = time(end, includeMeridiem: true)
-        return "\(lead) – \(trail)"
+        // Korean puts 오전/오후 in front, so the leading time always carries it
+        // and the trailing one repeats it only when the half of the day changes.
+        let sameHalf = (calendar.component(.hour, from: start) < 12)
+            == (calendar.component(.hour, from: end) < 12)
+        let lead = time(start, includeMeridiem: true)
+        let trail = time(end, includeMeridiem: !sameHalf)
+        return "\(lead) ~ \(trail)"
     }
 }
 
@@ -152,8 +155,8 @@ extension DateFormatter {
         defer { lock.unlock() }
         if let existing = cache[format] { return existing }
         let formatter = DateFormatter()
+        formatter.locale = .brief
         formatter.dateFormat = format
-        formatter.locale = .autoupdatingCurrent
         cache[format] = formatter
         return formatter
     }

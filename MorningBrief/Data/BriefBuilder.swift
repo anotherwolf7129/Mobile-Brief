@@ -135,14 +135,14 @@ struct BriefBuilder {
         if confirmed.isEmpty {
             if allEvents.isEmpty {
                 return index == 0
-                    ? "Nothing on the calendar."
-                    : "Still clear."
+                    ? "캘린더에 아무것도 없어요."
+                    : "계속 비어 있어요."
             }
             let longest = longestGap(in: allEvents)
             if index == 1, let longest, longest >= 90 {
-                return "The longest open stretch of the day."
+                return "하루 중 가장 길게 비어 있는 구간이에요."
             }
-            return index == 2 ? "Clear after the last meeting." : "No meetings in here."
+            return index == 2 ? "마지막 일정 뒤로는 비어 있어요." : "이 구간에는 일정이 없어요."
         }
 
         let minutes = confirmed.reduce(0) { $0 + $1.durationMinutes }
@@ -150,21 +150,27 @@ struct BriefBuilder {
 
         if confirmed.count == 1 {
             let event = confirmed[0]
-            let length = event.durationMinutes >= 60
-                ? "\(event.durationMinutes / 60)-hour"
-                : "\(event.durationMinutes)-minute"
-            return "One \(length) block: \(event.title)."
+            let length = KoreanDuration.spelled(minutes: event.durationMinutes)
+            return "\(length)짜리 일정 하나 — \(spokenTitle(event.title, fallback: "제목 없는 일정"))."
         }
 
         if longestCluster(confirmed) >= 3 {
-            return "\(confirmed.count.spelledOut.capitalizedFirst) back to back, ending with \(names.last ?? "the last one")."
+            let last = spokenTitle(names.last, fallback: "마지막 일정")
+            return "\(confirmed.count)개가 연달아 이어지고, 끝은 \(last.josa(.copula))."
         }
 
-        let hours = Double(minutes) / 60
-        let load = hours >= 2
-            ? String(format: "%.1f hours", hours).replacingOccurrences(of: ".0", with: "")
-            : "\(minutes) minutes"
-        return "\(confirmed.count.spelledOut.capitalizedFirst) meetings, \(load) in total — \(names.first ?? "") opens it."
+        let load = KoreanDuration.spelled(minutes: minutes)
+        let first = spokenTitle(names.first, fallback: "첫 일정")
+        return "일정 \(confirmed.count)개, 합쳐서 \(load)이고 \(first.josa(.by)) 시작해요."
+    }
+
+    /// A blank title would leave a particle attached to nothing, so a sentence
+    /// that leans on a title names something either way.
+    private func spokenTitle(_ title: String?, fallback: String) -> String {
+        guard let title, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return fallback
+        }
+        return title
     }
 
     private func longestGap(in events: [CalendarEvent]) -> Int? {
@@ -241,13 +247,15 @@ struct BriefBuilder {
         context: GatheredContext
     ) -> String {
         guard context.calendarAuthorized || context.remindersAuthorized else {
-            return "Nothing is connected yet."
+            return "아직 아무것도 연결되지 않았어요."
         }
-        let name = displayName.isEmpty ? "" : ", \(displayName)"
+        // Korean puts the name at the front rather than after the clause.
+        let name = displayName.isEmpty ? "" : "\(displayName)님, "
 
         // Something distinct: the user is running something today.
         if let owned = events.first(where: { $0.isOrganizer && $0.attendeeCount > 1 }) {
-            return "You're running \(owned.title)\(name) — the rest of the day bends around it."
+            let title = spokenTitle(owned.title, fallback: "직접 잡은 일정")
+            return "\(name)오늘은 \(title.josa(.object)) 직접 진행하는 날이고, 나머지는 그 일을 중심으로 움직여요."
         }
 
         switch shape {
@@ -255,10 +263,10 @@ struct BriefBuilder {
             if let lastMorning = events.last(where: {
                 Calendar.current.component(.hour, from: $0.end) <= 14
             }), events.last?.id != lastMorning.id {
-                let time = DateFormatting.time(lastMorning.end, includeMeridiem: false)
-                return "A steady climb until \(time)\(name), then the day opens up."
+                let time = DateFormatting.time(lastMorning.end, includeMeridiem: true)
+                return "\(name)\(time)까지 쉼 없이 이어지고, 그 뒤로 하루가 열려요."
             }
-            return "A full day of meetings\(name) — pace yourself through it."
+            return "\(name)일정이 하루를 가득 채우는 날이에요."
         case .normal:
             let hasEarly = events.first.map {
                 Calendar.current.component(.hour, from: $0.start) < 11
@@ -267,11 +275,11 @@ struct BriefBuilder {
                 Calendar.current.component(.hour, from: $0.start) >= 15
             } ?? false
             if hasEarly && hasLate {
-                return "Meetings bookend the day\(name) — the middle is yours."
+                return "\(name)일정이 하루의 앞뒤를 잡아 주고, 가운데는 비어 있어요."
             }
-            return "A manageable shape today\(name), with room to think between things."
+            return "\(name)무리 없는 하루예요. 일정 사이에 생각할 틈이 있어요."
         case .open:
-            return "The whole day is yours\(name). Use it on the thing that's been waiting."
+            return "\(name)하루가 온전히 비어 있어요. 미뤄 둔 일을 할 수 있는 날이에요."
         }
     }
 
@@ -290,15 +298,16 @@ struct BriefBuilder {
             let when: String
             if due < calendar.startOfDay(for: now) {
                 let days = calendar.dateComponents([.day], from: due, to: now).day ?? 1
-                when = days <= 1 ? "was due yesterday" : "has been open \(days) days"
+                when = days <= 1 ? "어제까지였어요" : "\(days)일째 열려 있어요"
             } else {
-                when = "is due today"
+                when = "오늘까지예요"
             }
+            let list = "\(reminder.listName) 목록"
             items.append(BriefItem(
                 id: "due-\(reminder.id)",
-                title: reminder.title.clipped(toWords: 10),
-                sentence: "In \(reminder.listName), this \(when)\(reminder.notes.map { " — \($0.firstSentence)" } ?? ".")",
-                sourcePhrase: "In \(reminder.listName)",
+                title: reminder.title.clipped(toCharacters: 24),
+                sentence: "\(list)에 있고, \(when)\(reminder.notes.map { " — \($0.firstSentence)" } ?? ".")",
+                sourcePhrase: list,
                 url: reminder.url,
                 kind: .needsAttention
             ))
@@ -309,9 +318,9 @@ struct BriefBuilder {
             guard let prep = prepSentence(for: event) else { continue }
             items.append(BriefItem(
                 id: "prep-\(event.id)",
-                title: "Prep: \(event.title.clipped(toWords: 8))",
+                title: "준비: \(event.title.clipped(toCharacters: 20))",
                 sentence: prep,
-                sourcePhrase: "on your calendar",
+                sourcePhrase: "캘린더",
                 url: event.url,
                 kind: .needsAttention
             ))
@@ -322,11 +331,12 @@ struct BriefBuilder {
             guard let due = reminder.due,
                   calendar.isDate(due, inSameDayAs: now.addingTimeInterval(86_400))
             else { continue }
+            let list = "\(reminder.listName) 목록"
             items.append(BriefItem(
                 id: "prep-\(reminder.id)",
-                title: reminder.title.clipped(toWords: 10),
-                sentence: "In \(reminder.listName), due tomorrow — starting it today leaves room to get it wrong once.",
-                sourcePhrase: "In \(reminder.listName)",
+                title: reminder.title.clipped(toCharacters: 24),
+                sentence: "\(list)에 있고 내일까지예요 — 오늘 시작해 두면 한 번 틀릴 여유가 남아요.",
+                sourcePhrase: list,
                 url: reminder.url,
                 kind: .needsAttention
             ))
@@ -337,22 +347,27 @@ struct BriefBuilder {
 
     /// A prep item needs a concrete anchor: an agenda to open with, a doc to
     /// skim, a decision that will be asked for. No anchor, no item.
+    /// Every sentence here has to contain the word "캘린더", because that is the
+    /// source phrase the item links from.
     private func prepSentence(for event: CalendarEvent) -> String? {
-        let day = Calendar.current.isDateInTomorrow(event.start) ? "tomorrow" : "soon"
-        let time = DateFormatting.time(event.start, includeMeridiem: true)
+        let day = Calendar.current.isDateInTomorrow(event.start) ? "내일" : "곧"
+        // "오전 9시로", but "오전 9시 30분으로".
+        let when = "\(day) \(DateFormatting.time(event.start, includeMeridiem: true).josa(.by))"
 
         if event.isOrganizer && event.attendeeCount > 1 {
-            return "You're the organizer for \(time) \(day) — the prep is the agenda you'll open with."
+            return "캘린더에 \(when) 올라와 있고 진행을 맡았어요 — 준비는 처음에 펼칠 안건이에요."
         }
         let lowered = event.title.lowercased()
-        if lowered.contains("retro") || lowered.contains("review") || lowered.contains("1:1") {
-            return "At \(time) \(day) — arrive holding two or three thoughts rather than forming them in the room."
+        let koreanCues = ["회고", "리뷰", "면담", "원온원", "일대일"]
+        if lowered.contains("retro") || lowered.contains("review") || lowered.contains("1:1")
+            || koreanCues.contains(where: { event.title.contains($0) }) {
+            return "캘린더에 \(when) 올라와 있어요 — 생각 두세 개를 들고 들어가면 그 자리에서 만들지 않아도 돼요."
         }
         if let notes = event.notes, !notes.isEmpty {
-            return "At \(time) \(day), with notes attached — skim them tonight so the context is already loaded."
+            return "캘린더에 \(when) 올라와 있고 메모가 붙어 있어요 — 오늘 훑어 두면 맥락이 미리 잡혀요."
         }
         if event.url != nil {
-            return "At \(time) \(day), with a doc linked — reading it first is most of the prep."
+            return "캘린더에 \(when) 올라와 있고 문서가 걸려 있어요 — 먼저 읽는 것이 준비의 대부분이에요."
         }
         return nil
     }
@@ -363,24 +378,27 @@ struct BriefBuilder {
 
         for reminder in context.recentlyCompleted.prefix(4) {
             let when = reminder.completedAt.map { completed -> String in
-                Calendar.current.isDateInToday(completed) ? "earlier today" : "yesterday"
-            } ?? "recently"
+                Calendar.current.isDateInToday(completed) ? "오늘" : "어제"
+            } ?? "최근에"
+            let list = "\(reminder.listName) 목록"
             items.append(BriefItem(
                 id: "done-\(reminder.id)",
-                title: reminder.title.clipped(toWords: 10),
-                sentence: "Closed \(when) in \(reminder.listName) — nothing left on it.",
-                sourcePhrase: "in \(reminder.listName)",
+                title: reminder.title.clipped(toCharacters: 24),
+                sentence: "\(list)에서 \(when) 닫혔어요 — 남은 건 없어요.",
+                sourcePhrase: list,
                 url: reminder.url,
                 kind: .resolved
             ))
         }
 
         for event in context.todayEvents where event.isCanceled {
+            let time = DateFormatting.time(event.start, includeMeridiem: true)
+            let freed = KoreanDuration.spelled(minutes: event.durationMinutes)
             items.append(BriefItem(
                 id: "cancel-\(event.id)",
-                title: event.title.clipped(toWords: 10),
-                sentence: "Cancelled by the organizer, freeing \(event.durationMinutes) minutes at \(DateFormatting.time(event.start, includeMeridiem: true)).",
-                sourcePhrase: "on your calendar",
+                title: event.title.clipped(toCharacters: 24),
+                sentence: "캘린더에서 주최자가 취소했고, \(time)의 \(freed)이 비었어요.",
+                sourcePhrase: "캘린더",
                 url: event.url,
                 kind: .resolved
             ))
@@ -392,33 +410,21 @@ struct BriefBuilder {
 
 // MARK: - Small text helpers
 
-extension Int {
-    var spelledOut: String {
-        let words = ["zero", "one", "two", "three", "four", "five",
-                     "six", "seven", "eight", "nine", "ten"]
-        return self >= 0 && self < words.count ? words[self] : "\(self)"
-    }
-}
-
 extension String {
-    var capitalizedFirst: String {
-        guard let first else { return self }
-        return first.uppercased() + dropFirst()
-    }
-
     /// The first sentence, without a trailing space.
     var firstSentence: String {
-        let terminators: Set<Character> = [".", "!", "?", "\n"]
+        let terminators: Set<Character> = [".", "!", "?", "。", "\n"]
         if let index = firstIndex(where: { terminators.contains($0) }) {
             return String(self[..<index]).trimmingCharacters(in: .whitespaces)
         }
         return trimmingCharacters(in: .whitespaces)
     }
 
-    /// Item titles cap at 10 words.
-    func clipped(toWords limit: Int) -> String {
-        let words = split(separator: " ")
-        guard words.count > limit else { return self }
-        return words.prefix(limit).joined(separator: " ") + "…"
+    /// Item titles are capped by character count rather than by word: Korean
+    /// packs far more into a word than English does, and plenty of Korean
+    /// titles have no spaces to count at all.
+    func clipped(toCharacters limit: Int) -> String {
+        guard count > limit else { return self }
+        return prefix(limit).trimmingCharacters(in: .whitespaces) + "…"
     }
 }

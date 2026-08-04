@@ -21,10 +21,10 @@ final class BriefNarrator: NSObject, ObservableObject {
         synthesizer.delegate = self
     }
 
-    /// Read the whole brief. Raises the audio session first so this is audible
-    /// from the background and from the lock screen.
+    /// Read the brief's first section — the time blocks. Raises the audio session
+    /// first so this is audible from the background and from the lock screen.
     func speak(_ brief: Brief) {
-        let script = BriefScript(brief: brief).full
+        let script = BriefScript(brief: brief).spoken
         speak(text: script)
     }
 
@@ -62,76 +62,47 @@ final class BriefNarrator: NSObject, ObservableObject {
         return utterance
     }
 
-    /// `BriefScript` writes the brief in English, so an English voice is the one
-    /// that pronounces it correctly. A voice built for another language will
-    /// still read it — through that language's phonetics, which is what makes it
-    /// sound wrong — so the device language is the wrong thing to follow here.
-    nonisolated static var scriptLanguagePrefix: String { "en" }
+    /// The brief is written in Korean, so a Korean voice is the only one that
+    /// pronounces it. The device language is beside the point — a phone set to
+    /// English still gets read to in Korean.
+    nonisolated static var scriptLanguage: String { "ko-KR" }
 
-    /// The language the brief is read in: whatever the user picked, else the
-    /// best English match for where they are.
+    /// `ko-KR` when it is installed, which it is on any stock iPhone. The prefix
+    /// fallback is there for a device that only carries Korean under some other
+    /// region tag: still Korean, still reads the brief correctly.
     nonisolated static func narrationLanguage() -> String {
-        let installed = availableLanguages()
-        if let chosen = Settings.shared.voiceLanguage, installed.contains(chosen) {
-            return chosen
-        }
-        return defaultLanguage(among: installed)
+        let installed = Set(AVSpeechSynthesisVoice.speechVoices().map(\.language))
+        if installed.contains(scriptLanguage) { return scriptLanguage }
+        return installed.first { $0.hasPrefix("ko") } ?? scriptLanguage
     }
 
-    /// Keeps the regional accent when there is one to keep — an English device
-    /// in Australia gets `en-AU`, a Korean device gets `en-US` rather than a
-    /// Korean voice sounding out English words.
-    nonisolated static func defaultLanguage(
-        among installed: [String] = BriefNarrator.availableLanguages()
-    ) -> String {
-        let device = AVSpeechSynthesisVoice.currentLanguageCode()
-        if device.hasPrefix(scriptLanguagePrefix), installed.contains(device) {
-            return device
-        }
-        if let region = Locale.current.region?.identifier,
-           installed.contains("\(scriptLanguagePrefix)-\(region)") {
-            return "\(scriptLanguagePrefix)-\(region)"
-        }
-        if installed.contains("en-US") { return "en-US" }
-        return installed.first { $0.hasPrefix(scriptLanguagePrefix) } ?? device
-    }
-
-    /// The user's chosen voice, else the best available for `narrationLanguage()`.
-    /// Enhanced and premium voices sound markedly better than the default and
-    /// are free once downloaded in Settings › Accessibility › Spoken Content.
+    /// The user's chosen voice, else the best Korean voice on the device.
     nonisolated static func preferredVoice() -> AVSpeechSynthesisVoice? {
         let language = narrationLanguage()
-        // A voice chosen under a different language would put the brief back in
-        // the accent the language picker was used to get away from, so it only
-        // counts while it still matches.
+        // A stored identifier can outlive the voice it named — a deleted
+        // download, a restored backup from another device — so it only counts
+        // while it still resolves to a Korean voice.
         if let identifier = Settings.shared.voiceIdentifier,
            let voice = AVSpeechSynthesisVoice(identifier: identifier),
            voice.language == language {
             return voice
         }
-        return availableVoices(for: language).first
-            ?? AVSpeechSynthesisVoice(language: language)
+        return defaultVoice(for: language) ?? AVSpeechSynthesisVoice(language: language)
     }
 
-    /// Languages offered in Settings: every language with a voice installed on
-    /// the device, English first because that is what the brief is written in.
-    nonisolated static func availableLanguages() -> [String] {
-        Set(AVSpeechSynthesisVoice.speechVoices().map(\.language)).sorted { lhs, rhs in
-            let lhsEnglish = lhs.hasPrefix(scriptLanguagePrefix)
-            let rhsEnglish = rhs.hasPrefix(scriptLanguagePrefix)
-            if lhsEnglish != rhsEnglish { return lhsEnglish }
-            return languageLabel(for: lhs) < languageLabel(for: rhs)
-        }
+    /// The default: the best-quality *female* Korean voice installed — 유나 in
+    /// Premium or Enhanced rather than the compact one iOS ships with. Quality is
+    /// ranked within the female voices rather than across all of them, so a
+    /// premium male voice never wins the default. A device with no female Korean
+    /// voice at all falls back to the best there is.
+    nonisolated static func defaultVoice(
+        for language: String = BriefNarrator.narrationLanguage()
+    ) -> AVSpeechSynthesisVoice? {
+        let voices = availableVoices(for: language)
+        return voices.first { $0.gender == .female } ?? voices.first
     }
 
-    /// `en-GB` as "English (United Kingdom)", in the reader's own language.
-    nonisolated static func languageLabel(for language: String) -> String {
-        let identifier = language.replacingOccurrences(of: "-", with: "_")
-        return Locale.current.localizedString(forIdentifier: identifier) ?? language
-    }
-
-    /// Voices offered in Settings, best quality first. Matched on the full tag,
-    /// not just the two-letter prefix: the accent is the point of the choice.
+    /// Voices offered in Settings, best quality first.
     nonisolated static func availableVoices(
         for language: String = BriefNarrator.narrationLanguage()
     ) -> [AVSpeechSynthesisVoice] {

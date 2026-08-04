@@ -31,7 +31,9 @@ targets:
         PRODUCT_NAME: MorningBrief
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: Morning Brief
+        # CFBundleDisplayName and the language keys live in Info.plist itself —
+        # the app name is Korean, and non-ASCII survives a plist far more
+        # reliably than it survives a build setting.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

@@ -7,6 +7,18 @@
 	  also YES, so the standard bundle keys are merged in at build time.
 	-->
 
+	<!-- This build is for Korean readers only: the brief is written in Korean and
+	     read by a Korean voice, so the bundle declares Korean as its one language
+	     rather than following the device. -->
+	<key>CFBundleDisplayName</key>
+	<string>모닝 브리핑</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ko</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ko</string>
+	</array>
+
 	<!-- `audio` is what lets the hands-free readout speak at the set time while
 	     the app is in the background. `fetch` lets the background refresh keep
 	     the pre-rendered notification sound current. -->
@@ -22,15 +34,15 @@
 	</array>
 
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Morning Brief reads today's and tomorrow's events to draw the shape of your day and read it out loud.</string>
+	<string>오늘과 내일의 일정을 읽어 하루의 모양을 그리고 소리로 읽어 주기 위해 캘린더를 사용해요.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Morning Brief reads what's due so it can tell you what actually needs you today.</string>
+	<string>오늘 실제로 챙겨야 할 일을 알려 주기 위해 마감이 있는 미리 알림을 읽어요.</string>
 
 	<!-- Kept for iOS versions before the full-access split. -->
 	<key>NSCalendarsUsageDescription</key>
-	<string>Morning Brief reads today's and tomorrow's events to draw the shape of your day and read it out loud.</string>
+	<string>오늘과 내일의 일정을 읽어 하루의 모양을 그리고 소리로 읽어 주기 위해 캘린더를 사용해요.</string>
 	<key>NSRemindersUsageDescription</key>
-	<string>Morning Brief reads what's due so it can tell you what actually needs you today.</string>
+	<string>오늘 실제로 챙겨야 할 일을 알려 주기 위해 마감이 있는 미리 알림을 읽어요.</string>
 
 	<!-- The app uses only HTTPS via system libraries, so it qualifies for the
 	     exemption. Declaring it here skips the export-compliance prompt on every

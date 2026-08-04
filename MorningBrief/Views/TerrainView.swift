@@ -250,13 +250,13 @@ struct TerrainView: View {
         let confirmed = meetings.filter { !$0.isTentative }.count
         switch shape {
         case .heavy:
-            return "A heavy day drawn as terrain, with \(confirmed) meetings."
+            return "일정 \(confirmed)개가 있는 빽빽한 하루를 지형으로 그린 그림."
         case .normal:
-            return "A normal day drawn as terrain, with \(confirmed) meetings."
+            return "일정 \(confirmed)개가 있는 보통 하루를 지형으로 그린 그림."
         case .open:
             return confirmed == 0
-                ? "An open day, drawn as still water."
-                : "An open day drawn as terrain, with \(confirmed) meeting."
+                ? "비어 있는 하루를 잔잔한 물로 그린 그림."
+                : "일정 \(confirmed)개가 있는 여유로운 하루를 지형으로 그린 그림."
         }
     }
 }
