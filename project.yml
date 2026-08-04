@@ -31,7 +31,6 @@ targets:
         PRODUCT_NAME: MorningBrief
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Support/MorningBrief.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Morning Brief
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
