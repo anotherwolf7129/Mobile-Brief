@@ -216,6 +216,12 @@ Settings. Two things worth doing:
 - **Download a better voice.** Settings › Accessibility › Spoken Content ›
   Voices — Enhanced and Premium voices are free and sound markedly better than
   the default. The app picks the best installed voice automatically.
+- **Check the voice language.** The brief is written in English, so the app
+  defaults to an English voice rather than following the device language — a
+  voice built for another language reads English through that language's
+  phonetics and sounds stilted. Settings › Voice › Language picks the accent
+  (English (United Kingdom), English (Australia), …) and the Voice picker below
+  it then lists only that language's voices.
 - **Check the ringer isn't silenced** before relying on tier 1.
 
 ### Testing the readout without waiting until morning
