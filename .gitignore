@@ -1,4 +1,5 @@
-# Xcode
+# Xcode — the project is generated from project.yml by XcodeGen, never committed
+*.xcodeproj
 build/
 DerivedData/
 *.xcuserstate
