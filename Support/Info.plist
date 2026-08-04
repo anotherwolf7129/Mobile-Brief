@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Only the keys Xcode cannot generate live here. GENERATE_INFOPLIST_FILE is
+	  also YES, so the standard bundle keys are merged in at build time.
+	-->
+
+	<!-- `audio` is what lets the hands-free readout speak at the set time while
+	     the app is in the background. `fetch` lets the background refresh keep
+	     the pre-rendered notification sound current. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+	</array>
+
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.morningbrief.refresh</string>
+	</array>
+
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Morning Brief reads today's and tomorrow's events to draw the shape of your day and read it out loud.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Morning Brief reads what's due so it can tell you what actually needs you today.</string>
+
+	<!-- Kept for iOS versions before the full-access split. -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>Morning Brief reads today's and tomorrow's events to draw the shape of your day and read it out loud.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Morning Brief reads what's due so it can tell you what actually needs you today.</string>
+
+	<!-- The app uses only HTTPS via system libraries, so it qualifies for the
+	     exemption. Declaring it here skips the export-compliance prompt on every
+	     TestFlight upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>
