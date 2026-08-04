@@ -126,8 +126,26 @@ Then:
 ### Shipping from CI
 
 `codemagic.yaml` runs the whole path on Codemagic: XcodeGen → fetch signing
-files for `$BUNDLE_ID` → build → upload to TestFlight. Two things it handles
-that are easy to get wrong by hand:
+files for `$BUNDLE_ID` → build → upload to TestFlight.
+
+It needs two secrets, not one. The App Store Connect API key (wired up as the
+`code magic_api_key` integration) authenticates the API calls, but Apple only
+returns the *public* half of a distribution certificate — the private key never
+leaves the machine that made it. So the signing step also needs
+`CERTIFICATE_PRIVATE_KEY`: a 2048-bit RSA key in PEM form, added as a secret
+variable in a Codemagic variable group named `appstore_credentials`.
+
+```bash
+ssh-keygen -t rsa -b 2048 -m PEM -f codemagic_cert_key -q -N ''
+```
+
+Paste the whole of `codemagic_cert_key`, `-----BEGIN`/`-----END` lines included.
+On the first build, `--create` mints a distribution certificate from that key;
+later builds reuse it. Apple caps you at two Apple Distribution certificates, so
+if creation is refused, revoke an unused one or export the private key of an
+existing certificate from Keychain Access and use that instead.
+
+Two more things CI handles that are easy to get wrong by hand:
 
 - **Build number.** `CURRENT_PROJECT_VERSION` in `project.yml` stays at `1`;
   CI overwrites it in the generated project with `last TestFlight build + 1`.

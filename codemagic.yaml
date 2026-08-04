@@ -5,6 +5,11 @@ workflows:
     max_build_duration: 60
     environment:
       xcode: 16.0
+      groups:
+        # Supplies CERTIFICATE_PRIVATE_KEY (see the "Fetch signing files" step).
+        # The name must match the variable group in the Codemagic UI exactly, or
+        # the build fails before any script runs.
+        - appstore_credentials
       vars:
         # Must match PRODUCT_BUNDLE_IDENTIFIER in project.yml — the "Verify
         # bundle ID" step below fails the build early if they ever drift again.
@@ -59,8 +64,30 @@ workflows:
       - name: Fetch signing files
         script: |
           set -e
+          # The App Store Connect API key authenticates the request, but it does
+          # not carry the distribution certificate's private key. Apple only ever
+          # hands back the public certificate, so the .p12 that gets imported into
+          # the keychain can only be assembled from a private key we supply. With
+          # no key, fetch-signing-files aborts with "Cannot save Signing
+          # Certificates without certificate private key" — after the keychain is
+          # already initialized, which makes it read like a keychain failure.
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "CERTIFICATE_PRIVATE_KEY is not set."
+            echo "Generate a 2048-bit RSA key:"
+            echo "  ssh-keygen -t rsa -b 2048 -m PEM -f codemagic_cert_key -q -N ''"
+            echo "then add the full PEM contents (BEGIN/END lines included) as a"
+            echo "secret variable named CERTIFICATE_PRIVATE_KEY in the"
+            echo "'appstore_credentials' group in Codemagic."
+            exit 1
+          fi
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          # --certificate-key would be picked up from CERTIFICATE_PRIVATE_KEY
+          # implicitly; passing it explicitly keeps the dependency visible here.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key "@env:CERTIFICATE_PRIVATE_KEY" \
+            --strict-match-identifier \
+            --create
           keychain add-certificates
           xcode-project use-profiles
 
