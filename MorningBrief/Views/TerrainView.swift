@@ -179,11 +179,11 @@ struct TerrainView: View {
                 let angle = Double(step) / 8 * 2 * .pi
                 var ray = Path()
                 ray.move(to: CGPoint(
-                    x: point.x + cos(angle) * radius * 1.45,
+                    x: point.x + Darwin.cos(angle) * radius * 1.45,
                     y: point.y + sin(angle) * radius * 1.45
                 ))
                 ray.addLine(to: CGPoint(
-                    x: point.x + cos(angle) * radius * 1.95,
+                    x: point.x + Darwin.cos(angle) * radius * 1.95,
                     y: point.y + sin(angle) * radius * 1.95
                 ))
                 context.stroke(ray, with: .color(colour), style: stroke)
