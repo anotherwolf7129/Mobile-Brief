@@ -4,8 +4,28 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       xcode: 16.0
+      vars:
+        # Change this to your unique App ID from the Apple Developer portal
+        BUNDLE_ID: "com.jphong.morningbrief" 
+    integrations:
+      # This now perfectly matches your screenshot!
+      app_store_connect: "code magic_api_key"
     scripts:
       - name: Generate Xcode Project
         script: |
           brew install xcodegen
           xcodegen generate
+      - name: Fetch signing files
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files $BUNDLE_ID --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa --project "MorningBrief.xcodeproj" --scheme "MorningBrief"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        submit_to_testflight: true
