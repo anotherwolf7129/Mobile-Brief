@@ -53,6 +53,7 @@ jobs:
 
     env:
       # codemagic-cli-tools reads all three of these implicitly.
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
