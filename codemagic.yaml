@@ -1,0 +1,11 @@
+workflows:
+  ios-testflight:
+    name: MorningBrief TestFlight Build
+    instance_type: mac_mini_m2
+    environment:
+      xcode: 16.0
+    scripts:
+      - name: Generate Xcode Project
+        script: |
+          brew install xcodegen
+          xcodegen generate
