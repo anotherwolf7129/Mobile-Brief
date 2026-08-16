@@ -135,7 +135,7 @@ private struct AccessRequestView: View {
     let onDefer: () -> Void
 
     @EnvironmentObject private var store: BriefStore
-    @EnvironmentObject private var scheduler: BriefScheduler
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -155,11 +155,11 @@ private struct AccessRequestView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 20) {
-                Button("계속") {
-                    Task {
-                        await scheduler.requestAuthorization()
-                        await store.requestAccess()
-                    }
+                // 계속 while there is a prompt left for it to lead to. Once the
+                // question has been answered, iOS won't ask again, so the button
+                // says where it actually goes.
+                Button(store.canPromptForAccess ? "계속" : "설정 열기") {
+                    Task { await store.connect(openURL: openURL) }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.clay)
@@ -170,7 +170,9 @@ private struct AccessRequestView: View {
             }
             .padding(.top, 4)
 
-            Text("다음 화면에서 iOS가 캘린더·미리 알림 접근을 물어봐요. 이미 거절했다면 설정 › 개인정보 보호 및 보안 › 캘린더에서 바꿀 수 있어요.")
+            Text(store.canPromptForAccess
+                 ? "다음 화면에서 iOS가 캘린더·미리 알림 접근을 물어봐요."
+                 : "이 기기에서는 이미 답한 항목이라 iOS가 다시 묻지 않아요. 설정 › 개인정보 보호 및 보안 › 캘린더에서 바꿀 수 있어요.")
                 .font(Theme.caption)
                 .foregroundStyle(Theme.inkGrey)
                 .fixedSize(horizontal: false, vertical: true)
@@ -185,7 +187,7 @@ private struct AccessRequestView: View {
 /// among the app's own furniture rather than the only thing on screen.
 private struct NotConnectedView: View {
     @EnvironmentObject private var store: BriefStore
-    @EnvironmentObject private var scheduler: BriefScheduler
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -199,11 +201,8 @@ private struct NotConnectedView: View {
                 .foregroundStyle(Theme.inkGrey)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("연결하기") {
-                Task {
-                    await scheduler.requestAuthorization()
-                    await store.requestAccess()
-                }
+            Button(store.canPromptForAccess ? "연결하기" : "설정 열기") {
+                Task { await store.connect(openURL: openURL) }
             }
             .font(Theme.body)
             .foregroundStyle(Theme.clay)

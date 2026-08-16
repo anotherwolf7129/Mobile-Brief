@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var store: BriefStore
     @EnvironmentObject private var scheduler: BriefScheduler
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     @State private var apiKey: String = KeychainStore.apiKey() ?? ""
     @State private var voices: [AVSpeechSynthesisVoice] = []
@@ -161,11 +162,8 @@ struct SettingsView: View {
             }
             if !store.calendarAuthorized || !store.remindersAuthorized
                 || !scheduler.notificationsAuthorized {
-                Button("연결하기") {
-                    Task {
-                        await scheduler.requestAuthorization()
-                        await store.requestAccess()
-                    }
+                Button(store.canPromptForAccess ? "연결하기" : "설정 열기") {
+                    Task { await store.connect(openURL: openURL) }
                 }
             }
         } header: {

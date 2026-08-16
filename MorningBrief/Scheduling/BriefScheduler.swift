@@ -40,6 +40,9 @@ final class BriefScheduler: NSObject, ObservableObject {
     }
 
     @Published private(set) var notificationsAuthorized = false
+    /// `.notDetermined` — iOS will still show its own prompt. Once it has been
+    /// answered, either way, requesting again resolves silently.
+    @Published private(set) var notificationsPromptable = false
     @Published private(set) var nextFireDate: Date?
 
     /// Set by the app so a tapped notification can trigger a readout.
@@ -96,12 +99,15 @@ final class BriefScheduler: NSObject, ObservableObject {
             log.error("Notification authorization failed: \(error.localizedDescription)")
             notificationsAuthorized = false
         }
+        // Asked and answered, whichever way it went and even if it threw.
+        notificationsPromptable = false
     }
 
     func refreshAuthorizationStatus() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         notificationsAuthorized = settings.authorizationStatus == .authorized
             || settings.authorizationStatus == .provisional
+        notificationsPromptable = settings.authorizationStatus == .notDetermined
     }
 
     // MARK: - Tier 1: the notification whose sound is the brief
