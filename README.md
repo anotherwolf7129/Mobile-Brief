@@ -21,8 +21,7 @@ Built for TestFlight distribution. SwiftUI, no third-party dependencies, iOS 17+
 
 This is the part that needed designing, so it's worth being precise. iOS gives no
 app a general "wake up at 7am and start talking" primitive. What it does give is
-three narrower mechanisms, and the app uses all three so they cover each other's
-gaps.
+two narrower mechanisms, and the app uses both so they cover each other's gaps.
 
 ### Tier 1 — the notification's *sound* is the spoken brief
 
@@ -53,24 +52,25 @@ count on the app icon. Tapping it opens the app and scrolls straight to those tw
 sections (`BriefScheduler.onItemsRequested` -> `BriefStore.pendingItemsFocus` ->
 `BriefView`). Nothing in either list, no notification.
 
-### Tier 2 — hands-free full readout (opt-in)
-
-With **Hands-free** on, the app keeps an `AVAudioSession` alive playing a
-near-silent loop, with `UIBackgroundModes: audio` declared. iOS therefore doesn't
-suspend the process, so a `Timer` can fire at the set time and speak the
-**entire** first section.
-
-This is the alarm-clock pattern. Honest trade-offs:
-
-- ✅ The whole first section, not a 30-second trim of it. Works from the
-  background and the lock screen.
-- ⚠️ **Uses more battery** — which is why it's a setting, off by default.
-- ⚠️ **Does not survive a force-quit or a reboot.** Tier 1 covers those.
-
-### Tier 3 — tapping the notification
+### Tier 2 — tapping the notification
 
 Opening the readout notification (the banner, or the "읽어 주기" action) reads the
-time blocks immediately.
+time blocks immediately — in full, with no 30-second cap, since this is live
+speech rather than a notification sound. `BriefNarrator` raises an
+`AVAudioSession` for the length of the readout and drops it again once the
+utterance queue drains.
+
+The app declares **no background audio mode**. Speech happens with the app on
+screen; there is no session held open behind it, and nothing to keep the process
+alive between mornings. Tier 1 is what covers the set time, and it does that from
+a notification iOS delivers whether or not the app is running.
+
+> An earlier build had a third tier — a near-silent looping `AVAudioSession` under
+> `UIBackgroundModes: audio`, which kept the process alive so a `Timer` could
+> speak the whole section unprompted. It was removed: App Review 2.5.4 asks that
+> the background audio mode be declared only by apps that actually play audible
+> content in the background, and a silent keep-alive loop is not that. The
+> chaptered-notification approach is the way back to a full unprompted readout.
 
 ### Keeping the audio current
 
@@ -144,6 +144,11 @@ Then:
 3. Export compliance is pre-answered: `ITSAppUsesNonExemptEncryption` is `false`
    in `Support/Info.plist` (HTTPS via system libraries only), so uploads don't
    prompt for it.
+4. The privacy manifest is `MorningBrief/PrivacyInfo.xcprivacy`, listed
+   explicitly in `project.yml` under `buildPhase: resources`. Left to XcodeGen's
+   inference it can end up outside the resources phase, and a manifest that
+   never reaches the bundle fails validation on upload without failing the
+   build — so if you move it, keep the explicit entry.
 
 ### Shipping from CI
 
@@ -248,8 +253,8 @@ Settings. Two things worth doing:
 ### Testing the readout without waiting until morning
 
 Set the time two minutes out, background the app, and lock the phone. To test
-tier 2 specifically, turn Hands-free on first. To test tier 1 in isolation, force
-quit the app after scheduling — the notification should still fire and speak.
+tier 1 in isolation, force quit the app after scheduling — the notification
+should still fire and speak. Tapping that notification is tier 2.
 
 ---
 
@@ -257,6 +262,7 @@ quit the app after scheduling — the notification should still fire and speak.
 
 ```
 MorningBrief/
+├── PrivacyInfo.xcprivacy       Privacy manifest (no tracking, no collection)
 ├── Model/
 │   ├── Brief.swift             Brief, Act, BriefItem, MeetingDot, DayShape, Motif
 │   ├── KoreanText.swift        Pinned ko_KR locale, 조사 attachment, duration wording
@@ -267,11 +273,10 @@ MorningBrief/
 │   └── BriefStore.swift        Coordinates gather -> build -> polish -> cache -> schedule
 ├── Speech/
 │   ├── BriefScript.swift       Brief -> spoken Korean (first section, and a 30s teaser)
-│   ├── BriefNarrator.swift     Live readout via AVSpeechSynthesizer
-│   ├── SpokenSoundRenderer.swift  Offline TTS -> Library/Sounds/*.caf  (tier 1)
-│   └── AudioKeepAlive.swift    Background audio session               (tier 2)
+│   ├── BriefNarrator.swift     Live readout via AVSpeechSynthesizer     (tier 2)
+│   └── SpokenSoundRenderer.swift  Offline TTS -> Library/Sounds/*.caf  (tier 1)
 ├── Scheduling/
-│   └── BriefScheduler.swift    Both notifications, hands-free timer, BGAppRefreshTask
+│   └── BriefScheduler.swift    Both notifications, BGAppRefreshTask
 ├── Writer/
 │   └── ClaudeBriefWriter.swift Optional Messages API prose pass (Korean, 해요체)
 └── Views/
@@ -292,8 +297,8 @@ which is a clean fallback rather than a broken one. For the real face, drop
 
 - Notification sounds obey the ringer switch and Silent Mode (tier 1), and 30
   seconds is a hard iOS cap.
-- Hands-free (tier 2) doesn't survive a force-quit or a reboot, and costs
-  battery.
+- The unprompted readout is the 30-second notification sound. Hearing the whole
+  first section takes a tap, because the app declares no background audio mode.
 - Background refresh timing is at iOS's discretion; nothing breaks when it
   doesn't run.
 - Reminders stand in for the skill's email and chat asks. There's no "have I

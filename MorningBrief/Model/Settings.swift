@@ -15,7 +15,6 @@ final class Settings: ObservableObject {
         static let hour = "brief.hour"
         static let minute = "brief.minute"
         static let weekdaysOnly = "brief.weekdaysOnly"
-        static let handsFree = "brief.handsFree"
         static let voiceIdentifier = "brief.voiceIdentifier"
         static let speechRate = "brief.speechRate"
         static let useClaude = "brief.useClaude"
@@ -36,13 +35,6 @@ final class Settings: ObservableObject {
 
     @Published var weekdaysOnly: Bool = true {
         didSet { defaults.set(weekdaysOnly, forKey: Key.weekdaysOnly) }
-    }
-
-    /// Keeps an audio session alive so the *whole* brief can be spoken at the set
-    /// time with no interaction. Costs battery; survives backgrounding and lock,
-    /// but not a force-quit or a reboot.
-    @Published var handsFree: Bool = false {
-        didSet { defaults.set(handsFree, forKey: Key.handsFree) }
     }
 
     /// A specific Korean voice, chosen in Settings. Nil means the best female
@@ -83,7 +75,6 @@ final class Settings: ObservableObject {
             Key.hour: 7,
             Key.minute: 0,
             Key.weekdaysOnly: true,
-            Key.handsFree: false,
             Key.speechRate: 0.5,
             Key.useClaude: false,
             Key.enabled: true,
@@ -92,7 +83,6 @@ final class Settings: ObservableObject {
         hour = defaults.integer(forKey: Key.hour)
         minute = defaults.integer(forKey: Key.minute)
         weekdaysOnly = defaults.bool(forKey: Key.weekdaysOnly)
-        handsFree = defaults.bool(forKey: Key.handsFree)
         voiceIdentifier = defaults.string(forKey: Key.voiceIdentifier)
         speechRate = defaults.double(forKey: Key.speechRate)
         useClaude = defaults.bool(forKey: Key.useClaude)

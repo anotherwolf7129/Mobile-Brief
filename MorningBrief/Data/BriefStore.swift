@@ -59,6 +59,37 @@ final class BriefStore: ObservableObject {
         EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
     }
 
+    private var eventsPromptable: Bool {
+        EKEventStore.authorizationStatus(for: .event) == .notDetermined
+            || EKEventStore.authorizationStatus(for: .reminder) == .notDetermined
+    }
+
+    /// True while any of the three prompts — calendar, reminders, notifications
+    /// — is still iOS's to show. Once one has been answered, either way, asking
+    /// again resolves immediately with no UI at all, so a button wired straight
+    /// to `connect()` would sit there looking broken.
+    var canPromptForAccess: Bool {
+        eventsPromptable || BriefScheduler.shared.notificationsPromptable
+    }
+
+    /// The connect step, wherever it appears. Returns `false` when there was no
+    /// prompt left to show: the caller should open Settings instead, which is
+    /// the only place an answer already given can change.
+    @discardableResult
+    func connect() async -> Bool {
+        guard canPromptForAccess else { return false }
+        if BriefScheduler.shared.notificationsPromptable {
+            await BriefScheduler.shared.requestAuthorization()
+        }
+        if eventsPromptable {
+            // Ends in a refresh of its own.
+            await requestAccess()
+        } else {
+            await refresh()
+        }
+        return true
+    }
+
     // MARK: - Refresh
 
     /// Rebuild the brief and re-arm everything around it. Safe to call on every
@@ -85,7 +116,6 @@ final class BriefStore: ObservableObject {
 
         await BriefScheduler.shared.schedule(brief: built)
         BriefScheduler.shared.scheduleBackgroundRefresh()
-        rearmTimer()
     }
 
     /// The background-task entry point: refresh quietly, no UI state churn.
@@ -103,7 +133,8 @@ final class BriefStore: ObservableObject {
         BriefNarrator.shared.stop()
     }
 
-    /// Called when the hands-free timer fires, or the notification is tapped.
+    /// Called when the morning notification is tapped, or arrives while the app
+    /// is already open.
     ///
     /// Tries for fresher data first, but a slow refresh must never push the
     /// readout past the moment it was scheduled for — after the deadline it
@@ -133,18 +164,6 @@ final class BriefStore: ObservableObject {
 
     func itemsShown() {
         pendingItemsFocus = false
-    }
-
-    func rearmTimer() {
-        if Settings.shared.handsFree && Settings.shared.enabled {
-            AudioKeepAlive.shared.start()
-            BriefScheduler.shared.armTimer { [weak self] in
-                self?.readoutFired()
-            }
-        } else {
-            AudioKeepAlive.shared.stop()
-            BriefScheduler.shared.disarmTimer()
-        }
     }
 
     // MARK: - Cache

@@ -5,20 +5,17 @@ import BackgroundTasks
 import os
 
 /// Owns everything time-related: the daily notification whose *sound is the
-/// spoken brief*, the silent notification that points at the two lists, the
-/// in-process timer that reads the time blocks aloud, and the background refresh
-/// that keeps all of it current.
+/// spoken brief*, the silent notification that points at the two lists, and the
+/// background refresh that keeps both current.
 ///
-/// Three tiers, deliberately overlapping, so the readout happens without the
-/// user touching anything:
+/// Two tiers, deliberately overlapping, so the readout happens without the user
+/// touching anything:
 ///
 /// 1. **Notification with a spoken sound** — fires at the set time whether or not
 ///    the app is running, and survives a force-quit and a reboot. Capped at 30
 ///    seconds by iOS, and suppressed by the ringer switch and by Silent Mode.
-/// 2. **Hands-free timer** — when the keep-alive session is on, the time blocks
-///    are spoken at the set time. Survives backgrounding and lock, not a
-///    force-quit.
-/// 3. **Tap to hear it** — opening the notification reads the time blocks again.
+/// 2. **Tap to hear it** — opening the notification reads the time blocks in
+///    full, without the 30-second cap.
 ///
 /// Only the time blocks are ever spoken. What needs attention and what is
 /// already sorted arrive as their own banner a minute later — tapping it opens
@@ -43,6 +40,9 @@ final class BriefScheduler: NSObject, ObservableObject {
     }
 
     @Published private(set) var notificationsAuthorized = false
+    /// `.notDetermined` — iOS will still show its own prompt. Once it has been
+    /// answered, either way, requesting again resolves silently.
+    @Published private(set) var notificationsPromptable = false
     @Published private(set) var nextFireDate: Date?
 
     /// Set by the app so a tapped notification can trigger a readout.
@@ -52,7 +52,6 @@ final class BriefScheduler: NSObject, ObservableObject {
     /// lists instead of reading anything out.
     var onItemsRequested: (() -> Void)?
 
-    private var timer: Timer?
     private var currentSoundName: String?
     /// Speech synthesis is not free, and `schedule` runs on every foreground —
     /// so re-render only when the words have actually changed.
@@ -100,12 +99,15 @@ final class BriefScheduler: NSObject, ObservableObject {
             log.error("Notification authorization failed: \(error.localizedDescription)")
             notificationsAuthorized = false
         }
+        // Asked and answered, whichever way it went and even if it threw.
+        notificationsPromptable = false
     }
 
     func refreshAuthorizationStatus() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         notificationsAuthorized = settings.authorizationStatus == .authorized
             || settings.authorizationStatus == .provisional
+        notificationsPromptable = settings.authorizationStatus == .notDetermined
     }
 
     // MARK: - Tier 1: the notification whose sound is the brief
@@ -255,7 +257,6 @@ final class BriefScheduler: NSObject, ObservableObject {
         currentSoundName = nil
         lastRenderedTeaser = nil
         nextFireDate = nil
-        disarmTimer()
         clearBadge()
     }
 
@@ -265,37 +266,6 @@ final class BriefScheduler: NSObject, ObservableObject {
         Task {
             try? await UNUserNotificationCenter.current().setBadgeCount(0)
         }
-    }
-
-    // MARK: - Tier 2: hands-free full readout
-
-    /// Arm an in-process timer for the next readout. Only useful while the
-    /// process is alive, which is what the keep-alive audio session buys.
-    func armTimer(_ handler: @escaping () -> Void) {
-        disarmTimer()
-        guard Settings.shared.enabled,
-              Settings.shared.handsFree,
-              let fireDate = Settings.shared.nextFireDate()
-        else { return }
-
-        let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                handler()
-                // Re-arm for tomorrow immediately.
-                self?.armTimer(handler)
-            }
-        }
-        // `.common` so the timer still fires while the run loop is in a
-        // tracking mode (scrolling, etc.).
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
-        nextFireDate = fireDate
-        log.info("Armed hands-free timer for \(fireDate.description, privacy: .public)")
-    }
-
-    func disarmTimer() {
-        timer?.invalidate()
-        timer = nil
     }
 
     // MARK: - Background refresh

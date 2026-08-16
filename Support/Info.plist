@@ -19,12 +19,12 @@
 		<string>ko</string>
 	</array>
 
-	<!-- `audio` is what lets the hands-free readout speak at the set time while
-	     the app is in the background. `fetch` lets the background refresh keep
-	     the pre-rendered notification sound current. -->
+	<!-- `fetch` lets the background refresh keep the pre-rendered notification
+	     sound current. The app declares no background audio mode: the readout is
+	     a notification sound rendered ahead of time, and live speech only ever
+	     happens with the app on screen. -->
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>audio</string>
 		<string>fetch</string>
 	</array>
 

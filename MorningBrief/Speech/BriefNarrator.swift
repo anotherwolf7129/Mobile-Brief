@@ -21,8 +21,7 @@ final class BriefNarrator: NSObject, ObservableObject {
         synthesizer.delegate = self
     }
 
-    /// Read the brief's first section — the time blocks. Raises the audio session
-    /// first so this is audible from the background and from the lock screen.
+    /// Read the brief's first section — the time blocks.
     func speak(_ brief: Brief) {
         let script = BriefScript(brief: brief).spoken
         speak(text: script)
@@ -30,11 +29,7 @@ final class BriefNarrator: NSObject, ObservableObject {
 
     func speak(text: String) {
         guard !text.isEmpty else { return }
-        do {
-            try AudioKeepAlive.shared.activateForSpeech()
-        } catch {
-            log.error("Could not activate audio session: \(error.localizedDescription)")
-        }
+        activateSession()
 
         synthesizer.stopSpeaking(at: .immediate)
         // One utterance per line, so there is a real pause between sections
@@ -49,6 +44,33 @@ final class BriefNarrator: NSObject, ObservableObject {
         synthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
         spokenLine = nil
+        deactivateSession()
+    }
+
+    // MARK: - Audio session
+
+    /// The session is raised for the length of a readout and dropped again as
+    /// soon as the queue drains. It is never held open: the app declares no
+    /// background audio mode, so speech belongs to the moment someone asked for
+    /// it — opening the app, or tapping the morning notification.
+    private func activateSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            log.error("Could not activate audio session: \(error.localizedDescription)")
+        }
+    }
+
+    private func deactivateSession() {
+        guard !synthesizer.isSpeaking else { return }
+        do {
+            try AVAudioSession.sharedInstance()
+                .setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            log.debug("Could not deactivate audio session: \(error.localizedDescription)")
+        }
     }
 
     // These three are `nonisolated` so the offline renderer can build an
@@ -138,6 +160,7 @@ extension BriefNarrator: AVSpeechSynthesizerDelegate {
             if !synthesizer.isSpeaking {
                 self.isSpeaking = false
                 self.spokenLine = nil
+                self.deactivateSession()
             }
         }
     }
@@ -149,6 +172,7 @@ extension BriefNarrator: AVSpeechSynthesizerDelegate {
         Task { @MainActor in
             self.isSpeaking = false
             self.spokenLine = nil
+            self.deactivateSession()
         }
     }
 }
