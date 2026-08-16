@@ -93,9 +93,12 @@ instead, via **EventKit**:
 | Email / chat asks | Apple Reminders — what's overdue or due today |
 | Resolved | Reminders completed in the last two days, plus meetings the organizer cancelled |
 
-No server, no account, nothing leaves the phone. If you later want the connector
-sources, `EventKitStore` is the only place to change — `GatheredContext` is the
-seam everything downstream depends on.
+No server, no account, and no developer-controlled service: as built, nothing
+leaves the phone. The one exception is the optional prose pass below, which is
+off unless the reader supplies their own Anthropic API key — the same qualifier
+the privacy page carries, kept here so the two don't drift. If you later want
+the connector sources, `EventKitStore` is the only place to change —
+`GatheredContext` is the seam everything downstream depends on.
 
 The brief keeps the skill's structure: day-date line, one serif headline, one
 unbroken terrain stroke with meeting dots and a single clay accent, three time
