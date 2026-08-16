@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Privacy manifest. Required by App Store Connect, and separate from the
+	  Info.plist usage strings: those explain a prompt to the reader, this
+	  declares to Apple what the binary does with data and which required-reason
+	  APIs it calls.
+
+	  Nothing here is aspirational — it is checked against the code:
+	  `Settings.swift` is the only UserDefaults user, and nothing in the app
+	  reads file timestamps, free disk space, boot time, or the active keyboard.
+	-->
+
+	<!-- No tracking of any kind: no ad identifier, no SDKs, no analytics, and
+	     nothing is joined with data from anywhere else. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Calendar events and reminders are read on device, rendered into the
+	     brief, and cached in the app container. None of it is collected: it is
+	     never sent to the developer, and there is no account, no server and no
+	     analytics for it to land in.
+
+	     The one path off the device is the optional prose pass, and it is not
+	     collection either — it runs only when the reader has typed in their own
+	     Anthropic API key, sends to their own account, and reaches no
+	     developer-controlled service. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<!-- UserDefaults is the only required-reason API the app touches: the
+	     readout time, weekday preference, chosen voice and speech rate, all of
+	     it this app's own settings, read and written by this app alone. -->
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

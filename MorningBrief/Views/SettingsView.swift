@@ -16,7 +16,6 @@ struct SettingsView: View {
             Form {
                 readoutSection
                 voiceSection
-                deliverySection
                 accessSection
                 proseSection
             }
@@ -46,7 +45,6 @@ struct SettingsView: View {
                             await store.refresh()
                         } else {
                             scheduler.cancelAll()
-                            AudioKeepAlive.shared.stop()
                         }
                     }
                 }
@@ -81,10 +79,15 @@ struct SettingsView: View {
         } header: {
             Text("읽어 주기")
         } footer: {
-            if let next = scheduler.nextFireDate, settings.enabled {
-                Text("다음 읽기 — \(next, format: .dateTime.weekday().hour().minute())")
-            } else if settings.enabled {
-                Text("아직 예약된 읽기가 없어요.")
+            VStack(alignment: .leading, spacing: 8) {
+                if let next = scheduler.nextFireDate, settings.enabled {
+                    Text("다음 읽기 — \(next, format: .dateTime.weekday().hour().minute())")
+                } else if settings.enabled {
+                    Text("아직 예약된 읽기가 없어요.")
+                }
+                Text("정해 둔 시간에 알림 *소리* 자체가 브리핑이에요 — 30초 정도, 손댈 것 없이 재생되고, 앱을 닫아 두거나 기기를 다시 켠 뒤에도 울려요. 벨소리를 끄거나 무음 모드면 iOS가 알림 소리를 막아요.")
+                Text("소리로 읽는 건 시간대 부분까지예요. 알림을 탭하면 앱이 열리면서 그 부분을 30초 제한 없이 처음부터 읽어 줘요.")
+                Text("**확인이 필요한 일**과 **이미 정리된 일**은 1분 뒤 알림으로 따로 와요 — 그 알림을 탭하면 해당 부분이 바로 열려요.")
             }
         }
     }
@@ -140,25 +143,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - How it reaches you
-
-    private var deliverySection: some View {
-        Section {
-            Toggle("자동으로 전부 읽기", isOn: $settings.handsFree)
-                .onChange(of: settings.handsFree) { _, _ in
-                    store.rearmTimer()
-                }
-        } header: {
-            Text("전달")
-        } footer: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("정해 둔 시간에 알림 *소리* 자체가 브리핑이에요 — 30초 정도, 손댈 것 없이 재생되고, 앱을 닫아 두거나 기기를 다시 켠 뒤에도 울려요. 벨소리를 끄거나 무음 모드면 iOS가 알림 소리를 막아요.")
-                Text("소리로 읽는 건 시간대 부분까지예요. **확인이 필요한 일**과 **이미 정리된 일**은 1분 뒤 알림으로 따로 와요 — 그 알림을 탭하면 해당 부분이 바로 열려요.")
-                Text("자동으로 전부 읽기를 켜면 앱이 직접 시간대 부분 전체를 읽어요. 깨어 있기 위해 조용한 오디오 세션을 유지하니 배터리를 더 쓰고, 앱을 강제 종료하거나 기기를 다시 켜면 멈춰요.")
-            }
-        }
-    }
-
     // MARK: - Sources
 
     private var accessSection: some View {
@@ -177,7 +161,7 @@ struct SettingsView: View {
             }
             if !store.calendarAuthorized || !store.remindersAuthorized
                 || !scheduler.notificationsAuthorized {
-                Button("권한 요청") {
+                Button("연결하기") {
                     Task {
                         await scheduler.requestAuthorization()
                         await store.requestAccess()

@@ -24,7 +24,15 @@ targets:
     type: application
     platform: iOS
     sources:
+      # The privacy manifest is listed separately, and excluded from the
+      # directory above so it isn't added twice. Left to inference it can land
+      # outside the resources phase, and a manifest that never reaches the
+      # bundle fails validation on upload without failing the build.
       - path: MorningBrief
+        excludes:
+          - PrivacyInfo.xcprivacy
+      - path: MorningBrief/PrivacyInfo.xcprivacy
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anotherwolf.closure

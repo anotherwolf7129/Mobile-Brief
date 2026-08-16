@@ -85,7 +85,6 @@ final class BriefStore: ObservableObject {
 
         await BriefScheduler.shared.schedule(brief: built)
         BriefScheduler.shared.scheduleBackgroundRefresh()
-        rearmTimer()
     }
 
     /// The background-task entry point: refresh quietly, no UI state churn.
@@ -103,7 +102,8 @@ final class BriefStore: ObservableObject {
         BriefNarrator.shared.stop()
     }
 
-    /// Called when the hands-free timer fires, or the notification is tapped.
+    /// Called when the morning notification is tapped, or arrives while the app
+    /// is already open.
     ///
     /// Tries for fresher data first, but a slow refresh must never push the
     /// readout past the moment it was scheduled for — after the deadline it
@@ -133,18 +133,6 @@ final class BriefStore: ObservableObject {
 
     func itemsShown() {
         pendingItemsFocus = false
-    }
-
-    func rearmTimer() {
-        if Settings.shared.handsFree && Settings.shared.enabled {
-            AudioKeepAlive.shared.start()
-            BriefScheduler.shared.armTimer { [weak self] in
-                self?.readoutFired()
-            }
-        } else {
-            AudioKeepAlive.shared.stop()
-            BriefScheduler.shared.disarmTimer()
-        }
     }
 
     // MARK: - Cache
